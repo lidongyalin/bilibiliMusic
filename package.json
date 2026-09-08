@@ -1,0 +1,25 @@
+{
+  "name": "bilibili-music-player",
+  "version": "1.1.0",
+  "description": "本地运行的 B 站音乐播放器：搜索、在线流播放、收藏",
+  "type": "module",
+  "main": "server.js",
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node scripts/dev.js",
+    "dev:server": "node --watch server.js",
+    "dev:client": "npm run dev --workspace client",
+    "build": "npm run build --workspace client",
+    "setup": "npm install && npm run build"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "license": "MIT"
+}
