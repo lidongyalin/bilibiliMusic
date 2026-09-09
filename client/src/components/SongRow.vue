@@ -48,7 +48,7 @@ function onRowClick() {
         <i></i><i></i><i></i>
       </span>
       <el-icon v-else-if="isCurrent && isPaused"><VideoPlay /></el-icon>
-      <span v-else>{{ index }}</span>
+      <span v-else class="song-index-num">{{ index }}</span>
     </span>
 
     <div class="song-cover">

@@ -3,6 +3,7 @@ import { api } from './api.js'
 import { prefs } from './prefs.js'
 import { state } from './state.js'
 import { MODE_LABELS } from './icons.js'
+import { clip } from './utils.js'
 
 /**
  * 播放控制器。用 new Audio() 而不是 DOM 里的 <audio>，
@@ -13,6 +14,14 @@ let audio = null
 let pendingResume = 0
 let saveTimer = 0
 let lastErrorMsg = ''
+
+// 播放失败的自动恢复状态：失败先原地重试一次，仍失败就切下一首，
+// 连续失败过多则停下——否则断网时会自动把整个队列高速过完
+let consecutiveFailures = 0
+let retryTarget = null
+let retryTimer = 0
+const MAX_CONSECUTIVE_FAILURES = 3
+const RETRY_DELAY_MS = 1200
 
 function getAudio() {
   if (!audio) {
@@ -52,6 +61,7 @@ function bindEvents() {
     state.status = 'playing'
     setPlaybackState('playing')
     clearErrorFlag()
+    resetFailureState()
   })
 
   a.addEventListener('waiting', () => {
@@ -69,18 +79,7 @@ function bindEvents() {
     next(true)
   })
 
-  a.addEventListener('error', () => {
-    if (!state.current || !a.src) return
-    const codes = {
-      1: '音频加载被中断',
-      2: '音频获取失败，请检查网络',
-      3: '音频解码失败',
-      4: '音频地址失效或内容不可播放',
-    }
-    state.status = 'error'
-    setPlaybackState('none')
-    showError(codes[a.error?.code] || '播放失败，可能是付费或受版权限制的内容')
-  })
+  a.addEventListener('error', onPlaybackError)
 }
 
 function bindMediaSession() {
@@ -132,6 +131,74 @@ function showError(message) {
 
 function clearErrorFlag() {
   lastErrorMsg = ''
+}
+
+// ---------- 播放失败自动恢复 ----------
+
+function resetFailureState() {
+  consecutiveFailures = 0
+  retryTarget = null
+}
+
+/** 连续失败过多，停止自动切换 */
+function stopAutoSkip() {
+  state.status = 'error'
+  setPlaybackState('none')
+  resetFailureState()
+  showError(
+    `连续 ${MAX_CONSECUTIVE_FAILURES} 首播放失败，已停止自动切换。` +
+    '常见原因：网络异常或 CDN 限流，也可能这些曲目是付费/受限内容'
+  )
+}
+
+/** 原地重播当前曲目 */
+function scheduleRetry(song) {
+  state.status = 'loading'
+  setPlaybackState('none')
+  retryTimer = setTimeout(() => {
+    retryTimer = 0
+    // 期间用户可能已经切走，别覆盖用户的选择
+    if (state.current !== song) return
+    void playAt(state.queueIndex)
+  }, RETRY_DELAY_MS)
+}
+
+/**
+ * 播放失败：先原地重试一次，仍失败就切下一首，连续失败过多则停下。
+ *
+ * 先重试而不是直接跳过，是因为上游最常见的失败（CDN 限流、音轨地址过期）是暂时的，
+ * 后端在失败时已经清掉音轨地址缓存，重试会重新解析出一个新地址。
+ */
+function onPlaybackError() {
+  const song = state.current
+  if (!song || !audio) return
+  // 1（ABORTED）是我们自己切歌打断产生的，不算失败
+  if (audio.error?.code === 1) return
+  // 已经在正常播放时收到的 error 是旧资源遗留的事件，此时 state.current 已是新歌，
+  // 按它处理会打断正在播放的曲目
+  // 注意不能用 audio.paused 判断：加载失败时元素处于「无媒体」状态，paused 返回 false
+  if (state.status === 'playing') return
+  // 已有重试在排队时忽略，避免同一次失败被计两次
+  if (retryTimer) return
+
+  // 单曲循环是用户明确的选择，不切歌，只原地重试
+  if (state.mode === 'single') {
+    if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return stopAutoSkip()
+    return scheduleRetry(song)
+  }
+
+  if (retryTarget !== song.bvid) {
+    retryTarget = song.bvid
+    return scheduleRetry(song)
+  }
+
+  if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return stopAutoSkip()
+  ElMessage({
+    message: `「${clip(song.title)}」播放失败，已切到下一首`,
+    type: 'warning',
+    duration: 2400,
+  })
+  next()
 }
 
 function scheduleSave() {
@@ -192,6 +259,14 @@ export async function playAt(index) {
 
 export async function togglePlay() {
   if (!state.current) return
+  // 失败后按播放键要重新发起加载，只调 a.play() 不会重新请求。
+  // 必须放在 !a.paused 判断之前：加载失败时元素处于「无媒体」状态，paused 返回 false，
+  // 会被误判为正在播放而走成 pause()
+  if (state.status === 'error') {
+    resetFailureState()
+    void playAt(state.queueIndex)
+    return
+  }
   const a = getAudio()
   if (!a.paused) {
     a.pause()

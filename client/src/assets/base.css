@@ -43,10 +43,14 @@ html.dark {
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; }
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%; /* 横竖屏切换时不让 iOS 自动放大字号 */
+}
 
 body {
   margin: 0;
+  height: 100%;
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
@@ -54,11 +58,28 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  /* 整页不允许滚动链：列表内部自己滚，避免移动端橡皮筋把播放条顶走 */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-#app { height: 100vh; }
+/*
+  移动浏览器的地址栏会让 100vh 大于实际可视高度，播放条会被压到地址栏后面。
+  dvh 随地址栏收展变化；前面的 100vh 是旧浏览器兜底。
+*/
+#app,
+.app-shell { height: 100vh; height: 100dvh; }
 
-button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  /* 去掉移动端点按的 300ms 延迟与双击缩放 */
+  touch-action: manipulation;
+  -webkit-appearance: none;
+}
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* 自绘描边图标 */
@@ -80,7 +101,6 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   grid-template-areas:
     'sidebar main'
     'player  player';
-  height: 100vh;
 }
 
 /* ---------- 侧栏 ---------- */
@@ -173,7 +193,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 }
 .list-meta { font-size: 12px; color: var(--text-faint); flex: none; }
 
-.list-scroll { flex: 1; min-height: 0; }
+/* 原生滚动而不是 el-scrollbar：后者的虚拟 thumb 靠 wheel 事件驱动，
+   触屏上没有 wheel 事件，thumb 位置会停滞错位，还会和原生滚动条重叠。 */
+.list-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .list-inner { padding: 0 12px 14px; }
 
 .song-list { list-style: none; margin: 0; padding: 0; }
@@ -482,32 +504,155 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 ::-webkit-scrollbar-thumb:hover { background: #34343f; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ---------- 响应式 ---------- */
-@media (max-width: 900px) {
-  :root { --sidebar-w: 208px; }
-  .volume-row { display: none; }
+/* ---------- 响应式 ----------
+   断点自上而下是包含关系（后面的覆盖前面的），所以手机段要写完整。 */
+
+/* 小屏笔记本 / 平板横屏：侧栏收窄，播放条更紧凑 */
+@media (max-width: 1100px) {
+  :root { --sidebar-w: 214px; }
+  .player-bar { gap: 16px; padding: 0 14px; }
+  .volume-row .el-slider { width: 72px; }
+  .list-header { padding-right: 18px; padding-left: 18px; }
 }
-@media (max-width: 680px) {
+
+/* 平板竖屏：播放数列没必要了，列表内边距收紧 */
+@media (max-width: 900px) {
+  :root { --sidebar-w: 188px; }
+  .song-row { grid-template-columns: 30px 40px minmax(0, 1fr) 46px 32px; gap: 10px; }
+  .song-play-count { display: none; }
+  .list-inner { padding: 0 8px 12px; }
+}
+
+/* 手机：侧栏变顶栏、播放条变两行、触达目标放大 */
+@media (max-width: 640px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-areas: 'sidebar' 'main' 'player';
-    grid-template-rows: auto 1fr var(--bar-h);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'sidebar'
+      'main'
+      'player';
   }
+
   .sidebar {
     flex-direction: row;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
+    gap: 10px;
+    padding: 10px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
     border-right: 0;
     border-bottom: 1px solid var(--line);
     overflow-x: auto;
+    overflow-y: hidden;
   }
-  .brand, .sidebar-footer { display: none; }
-  .sidebar .search-wrap { flex: 1; min-width: 0; }
-  .sidebar .el-menu { flex-direction: row; border-bottom: 0; flex: none; }
-  .sidebar .el-menu-item { height: 38px; line-height: 38px; padding: 0 12px; }
-  .song-row { grid-template-columns: 30px minmax(0, 1fr) 48px 32px; }
-  .song-index, .song-play-count { display: none; }
-  .np-text { display: none; }
-  .player-controls { grid-column: 1 / -1; }
+  .brand,
+  .sidebar-footer { display: none; }
+  .sidebar .search-wrap { flex: 1 1 0; min-width: 0; }
+  /* el-menu 默认是 display:block，只写 flex-direction 是无效的，必须显式给 display:flex
+     否则手机端「搜索结果 / 我的收藏」会上下堆叠，白占顶部一整行 */
+  .sidebar .el-menu {
+    display: flex;
+    width: auto;
+    flex: none;
+    flex-direction: row;
+    border-bottom: 0;
+  }
+  .sidebar .el-menu-item {
+    height: 36px;
+    line-height: 36px;
+    margin: 0;
+    padding: 0 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .sidebar .el-menu-item .el-icon { font-size: 16px; margin-right: 7px; }
+  .fav-count { margin-left: 4px; padding: 0 5px; font-size: 10.5px; }
+
+  .list-header { padding: 12px; }
+  .list-header h2 { font-size: 15px; }
+  .list-meta { font-size: 11.5px; }
+  .list-inner { padding: 0 6px 10px; }
+
+  /* 序号列保留（均衡器与 loading 转圈都在里面），只隐藏其中的数字 */
+  .song-row {
+    grid-template-columns: 24px 40px minmax(0, 1fr) 44px 40px;
+    gap: 9px;
+    padding: 8px 6px;
+  }
+  .song-index-num { display: none; }
+  .song-cover { width: 40px; height: 40px; border-radius: 7px; }
+  .song-title { font-size: 13.5px; }
+  .song-author { font-size: 11.5px; }
+  .song-meta { font-size: 11.5px; }
+  .row-btn { width: 40px; height: 40px; }
+
+  /* 播放条两行：第一行 封面+静音，第二行 控制+进度。
+     轨道高度必须给 auto，否则两行内容会超出 .app-shell 分给它的 96px 被裁掉 */
+  .player-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'now volume'
+      'controls controls';
+    row-gap: 4px;
+    padding: 8px 12px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .now-playing { grid-area: now; gap: 9px; }
+  .player-controls { grid-area: controls; }
+  .volume-row { grid-area: volume; }
+  .volume-row .el-slider { display: none; }
+  .np-art { width: 40px; height: 40px; border-radius: 7px; }
+  .np-title { font-size: 12.5px; }
+  .np-author { font-size: 11.5px; }
+  .controls-buttons { gap: 2px; }
+  .transport-btn { width: 40px; height: 40px; }
+  .play-btn { width: 44px; height: 44px; margin: 0 2px; }
+  .mute-btn { width: 40px; height: 40px; }
+  .progress-row { max-width: none; gap: 8px; }
+  .time { min-width: 32px; font-size: 11px; }
+
+  /* 触屏：跑道加高、thumb 加大，否则 6px 高的跑道手指很难点准 */
+  .progress-slider .el-slider__runway { height: 10px; }
+  .progress-slider .el-slider__bar { height: 10px; }
+  .el-slider__button { width: 16px; height: 16px; }
+
+  /* 10px 高的跑道仍然只有 10px 宽的命中区，而手指的按压误差通常更大，
+     很容易按在相邻控件上。伪元素不参与视觉渲染，但命中会落到跑道自身，
+     等于把纵向可点范围扩到约 40px，视觉高度不变。 */
+  .progress-slider .el-slider__runway::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -15px;
+    bottom: -15px;
+    background: transparent;
+  }
+
+  .el-message { padding: 8px 14px; font-size: 12.5px; }
+}
+
+/* 380px 以下的窄屏再让一步 */
+@media (max-width: 380px) {
+  .song-row { grid-template-columns: 22px 38px minmax(0, 1fr) 40px; }
+  .song-cover { width: 38px; height: 38px; }
+  .song-meta { display: none; }
+  .sidebar .el-menu-item { padding: 0 8px; }
+}
+
+/* 手机横屏（矮屏）：压扁播放条，把纵向空间让给列表 */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --bar-h: 72px; }
+  .player-bar { padding: 0 14px; }
+  .np-art { width: 44px; height: 44px; }
+  .play-btn { width: 38px; height: 38px; font-size: 19px; }
+  .transport-btn { width: 30px; height: 30px; }
+  .progress-row { max-width: 520px; }
+  .brand-sub { display: none; }
+}
+
+/* 超宽屏：列表限宽居中，避免行被拉得太开 */
+@media (min-width: 1700px) {
+  .list-wrap { flex: 0 1 1300px; margin-inline: auto; }
 }

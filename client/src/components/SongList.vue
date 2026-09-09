@@ -49,7 +49,7 @@ function onPlay(song) {
       <span class="list-meta">{{ meta }}</span>
     </div>
 
-    <el-scrollbar class="list-scroll">
+    <div class="list-scroll">
       <div class="list-inner">
         <ol class="song-list">
           <SongRow
@@ -76,6 +76,6 @@ function onPlay(song) {
           <el-button :loading="state.loading" @click="loadMore">加载更多</el-button>
         </div>
       </div>
-    </el-scrollbar>
+    </div>
   </div>
 </template>

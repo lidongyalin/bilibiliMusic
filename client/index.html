@@ -2,7 +2,13 @@
 <html lang="zh-CN" class="dark">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      viewport-fit=cover 让内容延伸到刘海/圆角区域，配合 CSS 的 env(safe-area-inset-*)
+      给顶栏和播放条留出安全区。故意不加 user-scalable=no——禁用缩放是无障碍反模式。
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- 移动浏览器把地址栏染色成应用主背景色 -->
+    <meta name="theme-color" content="#141419" />
     <!--
       B 站图片 CDN（hdslb.com）有防盗链：Referer 为空或来自 bilibili.com 才放行，
       来自本地域名的 Referer 一律返回 403 的 HTML 错误页。
