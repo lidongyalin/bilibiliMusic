@@ -11,8 +11,9 @@ import {
 } from '@element-plus/icons-vue'
 import Svg from './Svg.vue'
 import { state } from '../state.js'
-import { MODE_ICONS, MODE_LABELS, volumeIconPath } from '../icons.js'
+import { ICON_PATHS, MODE_ICONS, MODE_LABELS, volumeIconPath } from '../icons.js'
 import { cycleMode, next, prev, seekTo, setVolume, toggleMute, togglePlay } from '../player.js'
+import { toggleLyricPanel } from '../lyrics.js'
 import { isCurrentFaved, toggleFavorite } from '../favorites.js'
 import { formatTime } from '../utils.js'
 
@@ -151,6 +152,18 @@ function onCoverError() {
           @click="next(false)"
         >
           <el-icon><DArrowRight /></el-icon>
+        </button>
+
+        <button
+          type="button"
+          class="transport-btn lyric-toggle"
+          :class="{ 'is-active': state.lyricOpen }"
+          :title="state.lyricOpen ? '收起歌词（G）' : '显示歌词（G）'"
+          :aria-label="state.lyricOpen ? '收起歌词' : '显示歌词'"
+          :aria-pressed="state.lyricOpen"
+          @click="toggleLyricPanel()"
+        >
+          <Svg :d="ICON_PATHS.lyrics" :size="18" />
         </button>
       </div>
 

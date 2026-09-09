@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { CONFIG } from '../config.js';
 import { ApiError, ensureCookie, resetCookie, upstreamHeaders } from './http.js';
 
@@ -6,10 +7,42 @@ import { ApiError, ensureCookie, resetCookie, upstreamHeaders } from './http.js'
  *
  * 计划中的「音频区」接口（api.vc.bilibili.com）已整体下线，全部返回 404；
  * 桌面端 search/type?search_type=audio 需要登录，匿名返回 -1200 被降级。
- * 实测可用的路径是聚合搜索 search/all/v2，再从视频页 __playinfo__ 提取 DASH 音轨。
+ * 实测可用的路径是视频搜索 wbi/search/type?search_type=video，
+ * 再从视频页 __playinfo__ 提取 DASH 音轨。
+ *
+ * 排序：该端点忽略数字 order 值（0~5 返回完全相同的顺序），只认字符串枚举。
+ * order=click 按播放量降序，且跨页严格单调（实测第 2 页最大值 ≤ 第 1 页最小值），
+ * 所以排序交给上游，前端不需要再排。
+ *
+ * 翻页：请求超出 numPages 时上游会把 page 夹回 numPages+1 并重复返回同一页，
+ * 而不是返回空列表，所以终止条件必须用 numPages 判定，不能靠「空页即到底」。
  */
 
-const SEARCH_URL = 'https://api.bilibili.com/x/web-interface/search/all/v2';
+const SEARCH_URL = 'https://api.bilibili.com/x/web-interface/wbi/search/type';
+
+/** 播放量从高到低。其余取值：totalrank / pubdate / dm / stow / scores */
+const ORDER_BY_PLAY = 'click';
+
+/**
+ * WBI 签名常量。key 正常应从 nav.data.wbi 读取，但该端点需要登录
+ * （匿名返回 code -101 且不携带 wbi），只能用公开的固定值。
+ * 上游偶尔轮换这两个常量，轮换后搜索会静默返回空结果，届时改这里即可。
+ */
+const WBI_MIXIN_ORIG = 'fNBDcEh89LgqKv9470wH1n3zJyXa5r2m6yGZb7sTQdPuAJoCkRl';
+const WBI_IMG_KEY = '7cd08797d8a00a6a292ba9cc42f842b4';
+const WBI_SUB_KEY = 'e8862e026f44c27853b2d88f8c74c737';
+
+const WBI_MIXIN_KEY = [...WBI_MIXIN_ORIG]
+  .filter((c) => (WBI_IMG_KEY + WBI_SUB_KEY).includes(c))
+  .join('');
+
+/** 业务参数 → 带 wts / w_rid 的查询串 */
+export function signWbi(params) {
+  const qs = new URLSearchParams(params).toString();
+  const wts = Math.floor(Date.now() / 1000);
+  const wRid = createHash('md5').update(`${qs}&wts=${wts}${WBI_MIXIN_KEY}`).digest('hex');
+  return `${qs}&wts=${wts}&w_rid=${wRid}`;
+}
 
 const HTML_ENTITIES = {
   '&amp;': '&',
@@ -85,7 +118,7 @@ function toSong(item) {
 }
 
 async function fetchSearch(params) {
-  const res = await fetch(`${SEARCH_URL}?${params}`, {
+  const res = await fetch(`${SEARCH_URL}?${signWbi(params)}`, {
     headers: { ...upstreamHeaders(), Cookie: await ensureCookie() },
     signal: AbortSignal.timeout(CONFIG.API_TIMEOUT_MS),
   });
@@ -97,39 +130,39 @@ async function fetchSearch(params) {
   return json;
 }
 
-function videoGroup(json) {
-  return (json.data?.result || []).find((g) => g.result_type === 'video');
-}
-
 /**
- * 搜索音乐。只取 video 类型的结果（B 站默认相关性排序已较合理，保留原序）。
+ * 搜索音乐。只取 video 类型的结果，按播放量从高到低排序。
+ * 排序由上游完成（order=click）且跨页保持单调，前端无需再排。
  */
 export async function searchSongs(keyword, page = 1) {
   const kw = String(keyword || '').trim();
   if (!kw) throw new ApiError(400, '请输入搜索关键词');
 
-  const params = new URLSearchParams({ keyword: kw, page: String(page), order: '0' });
+  const params = {
+    search_type: 'video',
+    keyword: kw,
+    page: String(page),
+    page_size: String(CONFIG.PAGE_SIZE),
+    order: ORDER_BY_PLAY,
+  };
   let json = await fetchSearch(params);
 
   // buvid 被过度复用后，B 站会降级返回「有结果数、结果列表为空」的响应。
   // 识别出这种降级响应就换一个 buvid 重试一次。
-  if (
-    !(videoGroup(json)?.data || []).length &&
-    (json.data?.pageinfo?.video?.numResults ?? 0) > 0
-  ) {
+  if (!(json.data?.result || []).length && (json.data?.numResults ?? 0) > 0) {
     resetCookie();
     json = await fetchSearch(params);
   }
 
-  const rawItems = videoGroup(json)?.data || [];
-
-  const songs = rawItems
+  const songs = (json.data?.result || [])
     .filter((it) => Boolean(it.bvid && it.duration))
     .map(toSong)
     .filter((song) => song.durationSec > 0 && song.durationSec <= CONFIG.MAX_DURATION_SEC);
 
-  const total = json.data?.pageinfo?.video?.numResults ?? songs.length;
-  return { keyword: kw, page, list: songs, total, hasMore: page * CONFIG.PAGE_SIZE < total };
+  // 超页请求不会被上游拒绝，而是夹回 numPages+1 重复返回，所以必须用它判定终止。
+  const numPages = json.data?.numPages ?? 0;
+  const total = json.data?.numResults ?? songs.length;
+  return { keyword: kw, page, list: songs, total, hasMore: numPages > 0 && page < numPages };
 }
 
 /**

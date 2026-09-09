@@ -43,6 +43,10 @@ export const prefs = {
   getView() { return read('view', 'search') },
   setView(v) { write('view', v) },
 
+  // 只存「是否打开歌词面板」这个开关。歌词文本本身属于版权内容，只放在内存里，不落任何持久化存储
+  getLyricOpen() { return Boolean(read('lyricOpen', false)) },
+  setLyricOpen(v) { write('lyricOpen', Boolean(v)) },
+
   getLastKeyword() { return read('keyword', '') },
   setLastKeyword(k) { write('keyword', k) },
 

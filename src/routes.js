@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ApiError } from './api/http.js';
 import { searchSongs, formatDuration, formatPlayCount } from './api/bilibili.js';
+import { fetchLyrics } from './api/lyrics.js';
 import { handleStream, resolveAudio } from './api/stream.js';
 import { favorites } from './store/favorites.js';
 
@@ -29,6 +30,13 @@ export function createRouter() {
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const result = await searchSongs(req.query.keyword, page);
     res.json(result);
+  }));
+
+  /** 歌词：按当前播放的曲名查。查不到时返回 found=false 而不是报错 */
+  router.get('/lyrics', api(async (req, res) => {
+    const title = String(req.query.title || '');
+    if (!title.trim()) { res.status(400).json({ error: '缺少曲名' }); return; }
+    res.json(await fetchLyrics(title, String(req.query.artist || '')));
   }));
 
   /** 播放：后端解析音轨地址后代理转发，支持 Range */

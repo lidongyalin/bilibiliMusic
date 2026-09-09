@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { cycleMode, next, prev, seekTo, setVolume, togglePlay } from './player.js'
+import { toggleLyricPanel } from './lyrics.js'
 
 let bound = false
 
@@ -39,6 +40,9 @@ export function bindKeyboard() {
         break
       case 'KeyL':
         cycleMode()
+        break
+      case 'KeyG':
+        toggleLyricPanel()
         break
       case 'KeyN':
         next(false)

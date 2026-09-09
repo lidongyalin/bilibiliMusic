@@ -1,7 +1,8 @@
 {
   "name": "bilibili-music-player",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "本地运行的 B 站音乐播放器：搜索、在线流播放、收藏",
+  "author": "bilibili-music-player (local use only)",
   "type": "module",
   "main": "server.js",
   "workspaces": [
@@ -14,6 +15,8 @@
     "dev:client": "npm run dev --workspace client",
     "build": "npm run build --workspace client",
     "setup": "npm install && npm run build",
+    "test": "node scripts/test-history.mjs && node scripts/test-lyrics.mjs && node scripts/test-lyric-lines.mjs",
+    "icon": "node scripts/make-icon.mjs",
     "electron": "npm run build && electron electron/main.js",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
@@ -52,6 +55,7 @@
       "client/dist/**/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -66,6 +70,12 @@
           ]
         }
       ]
+    },
+    "mac": {
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,

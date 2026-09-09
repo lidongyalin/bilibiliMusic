@@ -42,25 +42,41 @@ const reachedEnd = computed(
   () => state.view === 'search' && !state.hasMore && state.songs.length > 0
 )
 
+// 提前加载的距离，也用作 rootMargin，改一处即可。
+const PRELOAD_PX = 360
+
 function resetScroll() {
   scrollEl.value?.scrollTo({ top: 0 })
 }
 
+// 触底判定：哨兵上边缘距滚动区可视底边小于 PRELOAD_PX 就加载。
+// loadMore() 内部有 loading / hasMore / keyword 三重守卫，重复调用是安全的。
+function checkLoad() {
+  if (!scrollEl.value || !sentinel.value) return
+  const gap =
+    sentinel.value.getBoundingClientRect().top - scrollEl.value.getBoundingClientRect().bottom
+  if (gap < PRELOAD_PX) loadMore()
+}
+
 onMounted(() => {
   // 哨兵始终挂在 DOM 上（不需要时 v-show 隐藏），避免 observer 反复 attach/detach。
-  // rootMargin 提前 360px 触发，等用户滚到底部时下一页通常已经拿到了。
-  observer = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMore()
-    },
-    { root: scrollEl.value, rootMargin: '0px 0px 360px 0px' }
-  )
-  if (sentinel.value) observer.observe(sentinel.value)
+  // rootMargin 提前触发，等用户滚到底部时下一页通常已经拿到了。
+  if (typeof IntersectionObserver === 'function') {
+    observer = new IntersectionObserver(
+      () => checkLoad(),
+      { root: scrollEl.value, rootMargin: `0px 0px ${PRELOAD_PX}px 0px` }
+    )
+    if (sentinel.value) observer.observe(sentinel.value)
+  }
+  // scroll 监听兜底：后台标签、无头渲染等环境会节流甚至不触发 IO 回调，
+  // 两种触发方式最终都汇到同一个 checkLoad()。
+  scrollEl.value?.addEventListener('scroll', checkLoad, { passive: true })
 })
 
 onBeforeUnmount(() => {
   observer?.disconnect()
   observer = null
+  scrollEl.value?.removeEventListener('scroll', checkLoad)
 })
 
 // 翻页时 page 递增，不动滚动位置；新搜索或清空会把 page 压低，此时回到顶部
@@ -69,6 +85,17 @@ watch(
   (page, prev) => {
     if (page <= prev) resetScroll()
   }
+)
+
+// 结果条数少、列表撑不满一屏时，加载完成后哨兵可能仍落在阈值范围内，
+// 再判定一次把它填满，避免留一行「滚动到底部自动加载」却根本滚不动。
+// flush: 'post' 关键——默认 pre 会在 DOM 更新前跑，量到的是旧列表的几何位置。
+watch(
+  () => state.loading,
+  (loading) => {
+    if (!loading && state.view === 'search') checkLoad()
+  },
+  { flush: 'post' }
 )
 
 // ---------- 交互 ----------

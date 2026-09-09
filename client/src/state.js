@@ -37,6 +37,12 @@ export const state = reactive({
   duration: 0,
   volume: prefs.getVolume(),
   muted: false,
+
+  // 歌词。lyricStatus: idle | loading | ok | empty
+  lyricOpen: prefs.getLyricOpen(),
+  lyrics: [],
+  lyricStatus: 'idle',
+  lyricMatch: null,
 })
 
 export const VIEWS = ['search', 'favorites']

@@ -8,44 +8,48 @@ import { runSearch } from '../search.js'
 import { debounce } from '../utils.js'
 
 const input = ref('')
+// el-autocomplete 实例：删除/清空历史后要主动刷新下拉里已渲染的列表
+const ac = ref(null)
 // 输入中不打断当前播放，只做搜索
 const doSearch = debounce((kw) => runSearch(kw), 400)
-// 历史列表本地缓存一份，删除时同步刷新，避免依赖弹层重新请求
-const history = ref([])
 
-function syncHistory() {
-  history.value = prefs.getHistory()
-}
-
-/** 历史即建议项：按已输入内容前缀过滤，空输入返回全部 */
+/**
+ * 历史即建议项：按已输入内容过滤，空输入返回全部。
+ * 每次都从 prefs 现读，不缓存到本地 ref——提交新关键词会改写历史，
+ * 缓存会导致下拉一直显示上一次搜索前的旧数据。
+ */
 function fetchHistory(queryString, callback) {
   const q = String(queryString || '').trim().toLowerCase()
   callback(
-    history.value
+    prefs
+      .getHistory()
       .filter((k) => !q || k.toLowerCase().includes(q))
       .map((k) => ({ value: k }))
   )
 }
 
+function refreshSuggestions() {
+  ac.value?.getData(input.value)
+}
+
 /**
- * 唯一的提交入口：回车（无选中项）、回车（选中项）、鼠标点选历史项都会走到这里。
- * 靠 select-when-unmatched 把「无选中项的回车」也转成 select 事件，
- * 否则回车既不会被本组件处理、也不会触发自己的 keyup 提交。
+ * 唯一的提交入口。靠 select-when-unmatched 把「无选中项的回车」也转成 select 事件：
+ * 回车无高亮 → select(当前输入)；回车有高亮 / 鼠标点选 → select(该项)。
+ * 三条路径都从这里走，避免 keyup.enter 与 select 重复触发搜索。
  */
 function onCommit({ value }) {
-  window.__commitProbe = { value, at: Date.now() }
   doSearch.cancel()
   void runSearch(value, { commit: true })
 }
 
 function removeHistoryItem(keyword) {
   prefs.removeHistory(keyword)
-  syncHistory()
+  refreshSuggestions()
 }
 
 function clearAllHistory() {
   prefs.clearHistory()
-  syncHistory()
+  refreshSuggestions()
 }
 
 watch(input, (value) => {
@@ -54,8 +58,7 @@ watch(input, (value) => {
 })
 
 onMounted(() => {
-  syncHistory()
-  // 恢复上次关键词，但恢复不算提交，不写历史
+  // 恢复上次关键词；恢复不算用户提交，不写历史
   if (state.lastKeyword) {
     input.value = state.lastKeyword
     runSearch(state.lastKeyword)
@@ -66,6 +69,7 @@ onMounted(() => {
 <template>
   <div class="search-wrap">
     <el-autocomplete
+      ref="ac"
       v-model="input"
       class="search-input"
       placeholder="搜索歌曲、UP 主…"

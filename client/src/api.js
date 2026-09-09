@@ -36,6 +36,13 @@ export const api = {
     return request(`/api/favorites/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
+  /** 歌词。查不到时后端返回 found=false，不报错 */
+  lyrics(title, artist = '') {
+    const q = new URLSearchParams({ title: String(title || '') })
+    if (artist) q.set('artist', artist)
+    return request(`/api/lyrics?${q}`)
+  },
+
   /**
    * 音频地址由后端解析并代理，前端从不接触 CDN 原始地址——
    * 既避免 CORS 拦截，也让地址过期时能由后端重新解析。

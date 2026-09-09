@@ -17,6 +17,7 @@
   --radius: 12px;
   --sidebar-w: 258px;
   --bar-h: 96px;
+  --lyric-w: 380px;
 
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
@@ -367,20 +368,21 @@ button {
 .load-status .is-loading { color: var(--accent); }
 
 /* ---------- 搜索历史下拉 ----------
-   el-autocomplete 的弹层被 teleport 到 body，scoped 样式够不着，必须写在全局样式里。 */
+   el-autocomplete 的弹层被 teleport 到 body，scoped 样式够不着，必须写在全局样式里。
+   注意 EP 的类名是 el-autocomplete-suggestion（连字符），不是 BEM 双下划线形式。 */
 .history-popper {
   padding: 0;
   background: var(--bg-elev-2);
   border-radius: 12px;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
 }
-.history-popper .el-autocomplete__suggestion {
+.history-popper .el-autocomplete-suggestion {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--bg-elev-2);
 }
-.history-popper .el-autocomplete__suggestion-header {
+.history-popper .el-autocomplete-suggestion__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -400,12 +402,12 @@ button {
   transition: color 0.12s, background 0.12s;
 }
 .history-clear:hover { color: var(--accent); background: var(--bg-hover); }
-.history-popper .el-autocomplete__suggestion li {
+.history-popper .el-autocomplete-suggestion__list li {
   padding: 7px 12px;
   font-size: 13.5px;
   color: var(--text);
 }
-.history-popper .el-autocomplete__suggestion li.highlighted {
+.history-popper .el-autocomplete-suggestion__list li.highlighted {
   background: var(--accent-soft);
 }
 .history-item {
@@ -427,12 +429,141 @@ button {
   opacity: 0;
   transition: opacity 0.12s, color 0.12s;
 }
-.history-popper .el-autocomplete__suggestion li:hover .history-del,
-.history-popper .el-autocomplete__suggestion li.highlighted .history-del {
+.history-popper .el-autocomplete-suggestion__list li:hover .history-del,
+.history-popper .el-autocomplete-suggestion__list li.highlighted .history-del {
   opacity: 1;
 }
 .history-del:hover { color: var(--err); }
 .history-popper .el-scrollbar__thumb { background: var(--line); }
+
+/* ---------- 歌词面板 ----------
+   右侧滑入的浮层，不占用 .app-shell 的网格轨道，所以桌面/手机两套布局都不用改。
+   藏起来时用 visibility 而不是 display:none——display:none 会丢掉布局尺寸，
+   切歌瞬间算自动滚动的位置会量到空值。
+*/
+.lyric-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: var(--bar-real-h, var(--bar-h));
+  width: var(--lyric-w);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.4);
+  transform: translateX(103%);
+  visibility: hidden;
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s linear 0.26s;
+}
+.lyric-panel.is-open {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s;
+}
+
+.lp-header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.lp-song { min-width: 0; }
+.lp-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-author {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+.lp-close:hover { background: var(--bg-hover); color: var(--text); }
+
+.lp-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 24px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.lp-placeholder .el-icon { font-size: 22px; color: var(--accent); }
+.lp-hint { font-size: 11.5px; color: var(--text-faint); }
+
+/* 上下留白让第一句和最后一句都能滚到中间 */
+.lp-pad { height: 34vh; flex: none; }
+
+.lp-scroll {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 22px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.lp-line {
+  margin: 0 0 15px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  text-align: center;
+  cursor: pointer;
+  transform-origin: center;
+  transition: color 0.24s ease, transform 0.24s ease;
+}
+.lp-line:hover { color: var(--text-dim); }
+.lp-line.is-active {
+  color: var(--text);
+  font-size: 16.5px;
+  font-weight: 600;
+  transform: scale(1.05);
+}
+
+.lp-footer {
+  flex: none;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 播放条上的歌词开关：开的时候跟播放模式按钮一样用强调色 */
+.transport-btn.lyric-toggle.is-active { color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric-panel { transition: none; }
+  .lp-line { transition: none; transform: none; }
+}
 
 /* ---------- 播放条 ---------- */
 .player-bar {
@@ -709,6 +840,9 @@ button {
   }
 
   .el-message { padding: 8px 14px; font-size: 12.5px; }
+
+  /* 手机上整屏宽。底边由 App.vue 量出的 --bar-real-h 决定（播放条这时是两行） */
+  .lyric-panel { width: 100%; }
 }
 
 /* 380px 以下的窄屏再让一步 */

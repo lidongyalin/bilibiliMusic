@@ -35,6 +35,11 @@ export const ICON_PATHS = {
   music:
     '<path d="M9 18V7l11-2v11"/><circle cx="6.5" cy="18" r="2.5"/>' +
     '<circle cx="17.5" cy="16" r="2.5"/>',
+
+  // 歌词面板：字幕框
+  lyrics:
+    '<rect x="3" y="5" width="18" height="14" rx="2.2"/>' +
+    '<path d="M7 11.5h4"/><path d="M7 14.8h10"/>',
 }
 
 export const MODE_ICONS = {

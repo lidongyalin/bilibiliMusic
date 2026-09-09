@@ -35,7 +35,9 @@ export async function runSearch(keyword, { page = 1, append = false, commit = fa
     }
     state.songs.push(...res.list)
     state.page = res.page
-    state.hasMore = res.hasMore
+    // hasMore 由后端的 numPages 判定，但本页可能因时长上限过滤而一条不剩；
+    // 空页即视为到底，否则触底自动加载会连环请求同样的空页。
+    state.hasMore = res.hasMore && res.list.length > 0
     state.total = res.total
     if (!append && res.list.length === 0) {
       ElMessage.warning('没有找到相关歌曲，换个关键词试试')
