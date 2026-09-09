@@ -124,10 +124,42 @@ async function fetchSearch(params) {
   });
   const json = await res.json().catch(() => null);
   if (!json || json.code !== 0) {
-    const reason = json?.message || `上游返回 ${res.status}`;
+    const reason = json.message || `上游返回 ${res.status}`;
     throw new ApiError(502, `搜索失败：${reason}`);
   }
   return json;
+}
+
+/** 风控挑战的提示文案。这个响应顶着 code=0 回来，最容易当成「没有更多」 */
+export const RISK_BLOCKED_MESSAGE = '搜索请求被 B 站风控拦下了，稍后再试一次';
+
+/** 风控重试前的等待。立刻重试只会再烧一个请求，把封锁加重 */
+export const RISK_RETRY_DELAY_MS = 1200;
+
+/**
+ * 给上游搜索响应分三类。抽成纯函数是为了能离线单测——这条分类错了，
+ * 用户看到的就是「列表莫名其妙停在一页，还显示没有更多了」。
+ *
+ * @returns {'ok' | 'blocked' | 'error'}
+ */
+export function classifySearchResponse(json) {
+  // 风控/滑块验证挑战：code 是 0，message 是 "OK"，但 data 里只有 v_voucher，
+  // 没有 result / numResults / numPages。必须单独识别，不能靠 code 判断。
+  if (json && json.data && typeof json.data.v_voucher === 'string') return 'blocked';
+  if (!json || json.code !== 0) return 'error';
+  return 'ok';
+}
+
+function parseSearchPage(json, kw, page) {
+  const songs = (json.data?.result || [])
+    .filter((it) => Boolean(it.bvid && it.duration))
+    .map(toSong)
+    .filter((song) => song.durationSec > 0 && song.durationSec <= CONFIG.MAX_DURATION_SEC);
+
+  // 超页请求不会被上游拒绝，而是夹回 numPages+1 重复返回，所以必须用它判定终止。
+  const numPages = json.data?.numPages ?? 0;
+  const total = json.data?.numResults ?? songs.length;
+  return { keyword: kw, page, list: songs, total, hasMore: numPages > 0 && page < numPages };
 }
 
 /**
@@ -147,22 +179,22 @@ export async function searchSongs(keyword, page = 1) {
   };
   let json = await fetchSearch(params);
 
-  // buvid 被过度复用后，B 站会降级返回「有结果数、结果列表为空」的响应。
-  // 识别出这种降级响应就换一个 buvid 重试一次。
-  if (!(json.data?.result || []).length && (json.data?.numResults ?? 0) > 0) {
+  if (classifySearchResponse(json) === 'blocked') {
+    // 换一个 buvid 等一会儿再试一次。只试一次：还被拦就说明不是 buvid 的问题，
+    // 继续重试只会让封锁更久。
     resetCookie();
+    await new Promise((r) => setTimeout(r, RISK_RETRY_DELAY_MS));
     json = await fetchSearch(params);
+    if (classifySearchResponse(json) === 'blocked') {
+      throw new ApiError(429, RISK_BLOCKED_MESSAGE);
+    }
+    if (classifySearchResponse(json) === 'error') {
+      const reason = json?.message || `上游返回 ${json ? json.code : '异常'}`;
+      throw new ApiError(502, `搜索失败：${reason}`);
+    }
   }
 
-  const songs = (json.data?.result || [])
-    .filter((it) => Boolean(it.bvid && it.duration))
-    .map(toSong)
-    .filter((song) => song.durationSec > 0 && song.durationSec <= CONFIG.MAX_DURATION_SEC);
-
-  // 超页请求不会被上游拒绝，而是夹回 numPages+1 重复返回，所以必须用它判定终止。
-  const numPages = json.data?.numPages ?? 0;
-  const total = json.data?.numResults ?? songs.length;
-  return { keyword: kw, page, list: songs, total, hasMore: numPages > 0 && page < numPages };
+  return parseSearchPage(json, kw, page);
 }
 
 /**

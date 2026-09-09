@@ -69,9 +69,11 @@ npm run dist        # 打当前系统的安装包
 
 ## 功能
 
-- **搜索**：关键词 400ms 防抖，分页自动加载，刷新后自动恢复上次关键词与搜索结果
+- **搜索**：关键词 400ms 防抖，分页自动加载。每页 50 条，**翻过的每一页都存进 `localStorage`，本地做分页** —— 重新打开应用直接用缓存恢复，一个请求都不发；已经翻过的页也不会再请求。缓存最多记 6 个关键词、单个关键词 20 页、总量 1.5MB，超了按 LRU 丢最早的
 - **搜索历史**：点击搜索框展开最近搜过的关键词，支持按当前输入过滤、单项删除、一键清空。回车提交或点选历史项才算一次搜索并写入历史；边打字的防抖搜索不写，否则打一个字存一条。最多留 30 条，重复提交会移到最前而不重复存储。历史只存在浏览器 `localStorage`，换浏览器或清缓存就没了
 - **触底自动加载**：列表滚动接近底部时自动请求下一页，底部提示行会显示「正在加载下一页…」/「滚动到底部自动加载」/「没有更多了」，点击它也能立即加载。翻页不重置滚动位置；换成新关键词会回到顶部。B 站返回的 `total` 是估算值，可能出现「空列表但还有下一页」，所以空页一律视为到底，避免连环请求空页
+- **被风控拦下不会被误报成「没有更多」**：B 站风控拦截请求时返回 `code=0`、`message="OK"`，但 `data` 里只有一个 `v_voucher`，没有 `result` / `numResults` / `numPages`。只判断 `code` 就会把它当成功，而 `numPages` 缺失会被算成 0，列表于是静默停在一页并显示「没有更多了」。现在后端识别这个字段，换一个 buvid 等 1.2 秒重试一次，还被拦就返回 429 和明确文案；前端收到错误**不清空已有列表、不重置 `hasMore`**，继续往下滚就能重试
+  - 页大小实测：`page_size` 20 / 50 正常，100 及以上会触发风控，所以定在 50
 
 自动加载的实现细节，改 `SongList.vue` 前值得知道：
 
@@ -169,7 +171,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/search?keyword=&page=` | 搜索，返回 `{keyword, page, list, total, hasMore}` |
+| GET | `/api/search?keyword=&page=` | 搜索，返回 `{keyword, page, list, total, hasMore}`。被风控拦下时是 `429 + {error: "搜索请求被 B 站风控拦下了，稍后再试一次"}`，不是空列表 |
 | GET | `/api/stream/:bvid` | 音频字节流，支持 `Range` / `Content-Range` / `Accept-Ranges` |
 | GET | `/api/lyrics?title=&artist=` | 按曲名取歌词，返回 `{ lines: [{time, text}], found, match, source }`。查不到是 `200 + found=false`，不是报错；缺曲名才 400 |
 | GET | `/api/probe/:bvid` | 音轨可用性探测，返回时长与带宽。**前端目前没调用**，留着给「播放前预检」这类改进用 |
@@ -200,6 +202,8 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 ├── scripts/verify-stream-guard.mjs  流代理防御逻辑的离线回归测试（不依赖网络）
 ├── scripts/test-lyrics.mjs   歌词匹配与 LRC 解析的离线单测（不联网）
 ├── scripts/test-lyric-lines.mjs  前端歌词行定位逻辑的单测（不依赖 DOM）
+├── scripts/test-search-response.mjs  搜索响应分类的单测（正常 / 风控 / 报错）
+├── scripts/test-search-cache.mjs     本地搜索页缓存的单测（不依赖 localStorage）
 ├── scripts/verify-lyrics-route.mjs  /api/lyrics 路由接线自检（不监听端口）
 ├── scripts/probe-lyrics-live.mjs    联网实测：拿真实搜索结果看匹配质量
 ├── client/                   Vite + Vue 3 + Element Plus
@@ -207,6 +211,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 │       ├── App.vue  main.js  state.js  prefs.js
 │       ├── player.js  search.js  favorites.js  keyboard.js
 │       ├── lyrics.js  lyric-lines.js          歌词加载 / 行定位纯函数
+│       ├── search-cache.js                   本地分页缓存（LRU + 字节预算）
 │       ├── api.js  utils.js  icons.js
 │       ├── components/       Sidebar SearchBox SongList SongRow PlayerBar LyricPanel Svg
 │       └── assets/base.css   深色主题 + 布局
@@ -224,7 +229,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 |---|---|---|
 | `HOST` | `127.0.0.1` | 监听地址 |
 | `PORT` | `8788` | 监听端口 |
-| `PAGE_SIZE` | `20` | 每页条数 |
+| `PAGE_SIZE` | `50` | 每页条数。实测 100 及以上会触发 B 站风控，所以定在 50；前端会把每页缓存到本地，页大一点只影响首次加载速度 |
 | `MAX_DURATION_SEC` | `1800` | 超过 30 分钟的视频不作为音乐结果返回 |
 | `RESOLVE_CACHE_TTL_MS` | `5 分钟` | 音轨地址缓存 |
 | `COOKIE_TTL_MS` | `10 分钟` | buvid cookie 有效期 |
@@ -239,6 +244,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 - **收藏是本地单文件**，单机单用户，没有同步、没有账号、没有多端共享。
 - **需要联网**，不做离线缓存。断网时给出中文提示，不白屏。
 - 搜索结果是 B 站视频搜索的结果，长尾词可能混入非音乐内容；超过 30 分钟的条目会被过滤掉。
+- **搜索会被 B 站风控拦下，而且拦得没有规律**。请求太密、`page_size` 太大、或 IP 信誉差（机房 / 数据中心 IP 明显更严）时，会返回只有 `v_voucher` 的空响应。现在会被识别并提示，不会静默停列表，但**拦了就是拦了** —— 只重试一次，不做任何绕过。家用宽带一般没事；连续翻很多页仍被拦时，等几分钟再试，或先让列表用本地缓存顶着。
 - **歌词是按曲名猜出来的，不是这条视频的歌词**。匹配靠曲名相似度打分，阈值 0.55，所以偶有串版（同名翻唱、标题里没写歌手）。面板底部标注了实际取自哪首歌，看一眼就能发现。
 - **B 站不提供歌词**，所以没有「视频自带歌词」这条路可走。
 

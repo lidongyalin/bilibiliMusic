@@ -51,6 +51,17 @@ export const prefs = {
   setLastKeyword(k) { write('keyword', k) },
 
   /**
+   * 搜索页缓存：翻过的页存下来，本地做分页。
+   * 结构在 search-cache.js 里定义，这里只负责读写。
+   * 超预算或被浏览器配额拒绝时静默失败——缓存丢了只是下次多几个请求，不该影响功能。
+   */
+  getSearchCache() {
+    const c = read('searchCache', {})
+    return c && typeof c === 'object' ? c : {}
+  },
+  setSearchCache(c) { write('searchCache', c) },
+
+  /**
    * 搜索历史。只记录用户明确提交的关键词（回车或点选历史项），
    * 不记录输入过程中的中间值——否则打一个字存一条，历史全是碎片。
    */

@@ -4,7 +4,7 @@ import { onMounted, ref, watch } from 'vue'
 import { state } from '../state.js'
 import { prefs } from '../prefs.js'
 import { switchView } from '../navigation.js'
-import { runSearch } from '../search.js'
+import { restoreSearch, runSearch } from '../search.js'
 import { debounce } from '../utils.js'
 
 const input = ref('')
@@ -61,7 +61,8 @@ onMounted(() => {
   // 恢复上次关键词；恢复不算用户提交，不写历史
   if (state.lastKeyword) {
     input.value = state.lastKeyword
-    runSearch(state.lastKeyword)
+    // 有本地缓存就直接恢复，一个请求都不发；没有才回退到走网络
+    if (!restoreSearch(state.lastKeyword)) runSearch(state.lastKeyword)
   }
 })
 </script>

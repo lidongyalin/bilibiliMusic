@@ -89,10 +89,11 @@ watch(
 
 // 结果条数少、列表撑不满一屏时，加载完成后哨兵可能仍落在阈值范围内，
 // 再判定一次把它填满，避免留一行「滚动到底部自动加载」却根本滚不动。
+// 同时监听条数：从本地缓存恢复时 loading 一直是 false，只靠它不会触发补满。
 // flush: 'post' 关键——默认 pre 会在 DOM 更新前跑，量到的是旧列表的几何位置。
 watch(
-  () => state.loading,
-  (loading) => {
+  () => [state.loading, state.songs.length],
+  ([loading]) => {
     if (!loading && state.view === 'search') checkLoad()
   },
   { flush: 'post' }
