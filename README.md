@@ -22,6 +22,8 @@ npm start
 npm run dev
 ```
 
+`npm start` 用的是 `node server.js`，**不带 `--watch`**，所以改过后端代码要手动重启才生效。旧的进程不会自动退，还会继续占着 8788——这时候新起一个会报 `EADDRINUSE`，而页面上所有新增接口都会返回 `Cannot POST /api/xxx` 的 404，看起来像「功能报错了」，实际是打到了老进程上。排查这类问题时先确认后端是不是最新的（`curl -s http://127.0.0.1:8788/api/playlists` 应返回 JSON 而不是 HTML 错误页）。
+
 其他脚本：
 
 ```bash
@@ -222,6 +224,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 ├── scripts/test-search-cache.mjs     本地搜索页缓存的单测（不依赖 localStorage）
 ├── scripts/test-playlists.mjs        歌单 store 的单测（用 tmpdir，不碰仓库内 data/）
 ├── scripts/verify-lyrics-route.mjs  /api/lyrics 路由接线自检（不监听端口）
+├── scripts/verify-batch-add-e2e.mjs 批量加歌全链路自检（只监听随机端口，跑完即关）
 ├── scripts/probe-lyrics-live.mjs    联网实测：拿真实搜索结果看匹配质量
 ├── client/                   Vite + Vue 3 + Element Plus
 │   └── src/

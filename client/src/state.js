@@ -31,8 +31,6 @@ export const state = reactive({
   currentPlaylistId: prefs.getLastPlaylist(),
   currentPlaylist: null,
   playlistDetailLoading: false,
-  // 歌单内是否已含当前曲目：判断星标要不要显示成「已在歌单」
-  // 不单独存 Set，直接按 currentPlaylist.songs 查——量级小，查一次不心疼
 
   // 多选。selectMode 是「进入多选」这个动作开关；selection 存选中的 bvid
   selectMode: false,

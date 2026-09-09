@@ -78,12 +78,31 @@ export const api = {
     return request(`/api/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
-  /** 批量加歌：一次提交，服务端去重并返回实际新增数 */
+  /**
+   * 批量加歌：一次提交，服务端去重并返回实际新增数。
+   *
+   * 只传歌单真正需要的字段。前端搜到的条目带一堆纯展示数据（封面原始地址、
+   * 已格式化的时长和播放量文本），全量提交时 500 首就要 134kB，会撞后端 body 上限。
+   */
   addSongsToPlaylist(id, songs) {
+    const payload = (Array.isArray(songs) ? songs : []).map((s) => ({
+      bvid: s.bvid,
+      id: s.id || s.bvid,
+      type: s.type || 'video',
+      aid: s.aid || 0,
+      title: s.title || '',
+      author: s.author || '',
+      cover: s.cover || '',
+      duration: s.duration || '',
+      durationSec: Number(s.durationSec) || 0,
+      play: Number(s.play) || 0,
+      playText: s.playText || '',
+      isPay: Boolean(s.isPay),
+    }))
     return request(`/api/playlists/${encodeURIComponent(id)}/songs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ songs }),
+      body: JSON.stringify({ songs: payload }),
     })
   },
 

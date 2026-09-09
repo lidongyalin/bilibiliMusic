@@ -10,7 +10,10 @@ import { createRouter } from './routes.js';
  */
 export function createApp() {
   const app = express();
-  app.use(express.json());
+  // 默认 100kB 不够：一次批量加歌会把每首歌的完整快照都塞进 body，
+  // 500 首约 134kB，会直接被 413 拒掉（前端只显示「请求失败（HTTP 413）」，看不出是体积问题）。
+  // 1mb 覆盖单批 500 首的上限，同时不至于让一个请求占太多内存。
+  app.use(express.json({ limit: '1mb' }));
   app.use('/api', createRouter());
 
   if (existsSync(CONFIG.PUBLIC_DIR)) {

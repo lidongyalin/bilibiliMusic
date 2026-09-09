@@ -1,6 +1,6 @@
 {
   "name": "bilibili-music-player",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "本地运行的 B 站音乐播放器：搜索、在线流播放、收藏、歌单",
   "author": "bilibili-music-player (local use only)",
   "type": "module",

@@ -42,7 +42,7 @@ function onCommand(id) {
           {{ p.name }}
           <span class="pick-count">{{ p.songCount }}</span>
         </el-dropdown-item>
-        <el-dropdown-item v-if="!state.playlists.length" disabled>
+        <el-dropdown-item v-if="!state.playlists.length" disabled command="">
           还没有歌单
         </el-dropdown-item>
         <el-dropdown-item divided command="__new__">

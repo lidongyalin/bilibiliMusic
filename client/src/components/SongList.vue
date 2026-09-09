@@ -84,6 +84,11 @@ function toggleSelectMode() {
 
 async function batchAdd(id) {
   if (!selectedSongs.value.length) return
+  // 没有歌单时下拉里只剩占位项，点它 command 会是空值——静默跳过，别发注定 404 的请求
+  if (!id) {
+    ElMessage.info('还没有歌单，点「新建歌单…」先建一个')
+    return
+  }
   const ok = await addSongsToPlaylist(id, selectedSongs.value)
   if (ok) {
     clearSelection()
