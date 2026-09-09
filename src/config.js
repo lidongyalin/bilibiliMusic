@@ -32,7 +32,12 @@ export const CONFIG = {
   /** 每页返回条数 */
   PAGE_SIZE: 20,
 
-  DATA_DIR: resolve(here, '../data'),
+  /**
+   * 收藏等运行时数据的存放目录。默认为仓库内的 data/；
+   * 桌面端必须覆盖成 Electron 的 userData——打包后仓库目录在 asar 里是只读的，
+   * 写不进去。由 electron/main.js 在启动时注入，CLI 用法不受影响。
+   */
+  DATA_DIR: process.env.DATA_DIR || resolve(here, '../data'),
   /** 前端构建产物目录（Vite 输出） */
-  PUBLIC_DIR: resolve(here, '../client/dist'),
+  PUBLIC_DIR: process.env.PUBLIC_DIR || resolve(here, '../client/dist'),
 };

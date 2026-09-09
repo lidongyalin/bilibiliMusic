@@ -5,7 +5,13 @@ import { state } from './state.js'
 
 /** 搜索与分页 */
 
-export async function runSearch(keyword, { page = 1, append = false } = {}) {
+/**
+ * 执行搜索。
+ * @param {boolean} opts.append 追加到已有结果（翻页用）
+ * @param {boolean} opts.commit 写入搜索历史。只由「回车提交 / 点选历史项」这类明确动作传 true，
+ *   输入过程中的防抖搜索不传——否则打一个字存一条。
+ */
+export async function runSearch(keyword, { page = 1, append = false, commit = false } = {}) {
   const kw = String(keyword || '').trim()
 
   if (!kw) {
@@ -22,6 +28,7 @@ export async function runSearch(keyword, { page = 1, append = false } = {}) {
     const res = await api.search(kw, page)
     state.keyword = res.keyword
     prefs.setLastKeyword(res.keyword)
+    if (commit) prefs.addHistory(res.keyword)
     if (!append) {
       state.songs = []
       state.page = 0

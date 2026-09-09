@@ -1,9 +1,12 @@
 /**
- * 本地偏好持久化：播放模式、音量、上次关键词、视图，以及每首歌的播放位置。
+ * 本地偏好持久化：播放模式、音量、上次关键词、搜索历史、视图，以及每首歌的播放位置。
  * 位置按 bvid 记录，回到同一首歌时自动续播。
  */
 
 const NS = 'bilibili-music-player:'
+
+/** 搜索历史条数上限 */
+const HISTORY_MAX = 30
 
 function read(key, fallback) {
   try {
@@ -42,6 +45,29 @@ export const prefs = {
 
   getLastKeyword() { return read('keyword', '') },
   setLastKeyword(k) { write('keyword', k) },
+
+  /**
+   * 搜索历史。只记录用户明确提交的关键词（回车或点选历史项），
+   * 不记录输入过程中的中间值——否则打一个字存一条，历史全是碎片。
+   */
+  getHistory() {
+    const list = read('history', [])
+    if (!Array.isArray(list)) return []
+    return list.filter((k) => typeof k === 'string' && k.trim()).slice(0, HISTORY_MAX)
+  },
+  addHistory(keyword) {
+    const kw = String(keyword || '').trim()
+    if (!kw) return
+    const lower = kw.toLowerCase()
+    const rest = this.getHistory().filter((k) => k.toLowerCase() !== lower)
+    write('history', [kw, ...rest].slice(0, HISTORY_MAX))
+  },
+  removeHistory(keyword) {
+    write('history', this.getHistory().filter((k) => k !== keyword))
+  },
+  clearHistory() {
+    write('history', [])
+  },
 
   getPositions() { return read('positions', {}) },
   getPosition(bvid) {

@@ -32,6 +32,38 @@ npm run dev:client   # 只跑前端
 
 前端产物在 `client/dist`，由后端直接托管。没构建时后端会返回明确的 503 提示，不会静默 404。
 
+## 桌面应用
+
+Electron 打包成单个 exe，双击即用，不需要装 Node：
+
+```bash
+npm run electron    # 开发调试：直接用本机 Electron 跑，不打包
+npm run dist:dir    # 只出未压缩的应用目录，最快，验证打包链用
+npm run dist:zip    # Windows 压缩包，解压后 exe 在根目录，双击即跑
+npm run dist:win    # Windows 安装包 + 绿色免安装单文件 exe
+npm run dist        # 打当前系统的安装包
+```
+
+产物在 `release/`：`*-portable.exe` 是单文件免安装版，NSIS 安装包可选安装目录并建桌面快捷方式，zip 解压即用。未压缩的应用目录约 371MB，压缩包约 154MB——大头是自带 Chromium，前端本身只有几 MB。
+
+**`dist:win` 需要能访问 GitHub。** NSIS 和 WiX 的二进制只托管在 GitHub releases，electron-builder 会在打包时联网下载；网络不通就报 `connect ETIMEDOUT ... failedTask=build`。遇到这种情况用 `dist:zip` 或 `dist:dir`，两者不额外下载打包工具（zip 只多下一个 7z）。想换源可以设 `ELECTRON_BUILDER_BINARIES_MIRROR`，但常见的 npmmirror 只镜像了上游 NSIS，没有 electron-builder 重新打包的那个格式，实际换不过去。
+
+**为什么是 Electron，不是 Tauri 或 PWA**：音频流必须经 Node 的 `fetch` 转发（CORS、防盗链、Range 透传、cookie 都在服务端），Tauri 的 Rust + 系统 WebView 塞不下这套逻辑，PWA 根本装不上后端。所以唯一合理形态是 Electron 主进程**同进程内**起 Express，再 `loadURL` 到那个本地端口。顺带说，前端不能用 `file://` 打开 `client/dist`——所有请求都是相对路径 `/api/...`。
+
+为打包改动了 4 处，都是必须改的：
+
+1. **端口用 0，不用 8788**（`electron/main.js`）。固定端口会和用户本机已有的服务冲突。`listen(0)` 让系统分配空闲端口，再从 `server.address().port` 拿真实值。监听地址保持 `127.0.0.1`——桌面应用不需要局域网访问，`0.0.0.0` 等于把带 B 站代理能力的服务暴露到整段局域网。
+2. **`DATA_DIR` 指向 `app.getPath('userData')`**（`electron/env.js`）。打包后仓库目录在 `app.asar` 内，asar 里的 fs 是只读的，收藏写不进去。 userData 在 Windows 上是 `%APPDATA%/bilibili-music-player`。这个环境变量**必须在 `config.js` 被求值前设置**，所以 `env.js` 固定写在 `main.js` 的第一个 import 位置（ESM 按声明顺序求值），且不能 import 任何会间接引入 `config.js` 的模块。
+3. **单实例锁**（`app.requestSingleInstanceLock`）。收藏是持久化文件，两个实例并发写会互相覆盖，这不是理论风险。第二次双击时聚焦已有窗口而不是再开一个。
+4. **抽出 `createApp()` 工厂**（`src/createApp.js`）。原来 Express 应用在 `server.js` 里直接 `listen`，桌面端无法复用。现在工厂只构建应用不监听端口，`server.js`（CLI）和 `electron/main.js` 各自决定监听方式。`npm start` 行为不变。
+
+两个还没解决的事：
+
+- **未签名，首次运行会被 Windows SmartScreen 拦**。未签名的 exe 第一次运行会弹红色警告，要点「更多信息 → 仍要运行」。需要代码签名证书（OV/EV）才能去掉，几百到一两千块一年——这不是代码问题。
+- **用的是 Electron 默认图标**。要自定义，把 `icon.ico`（256×256 起，含多尺寸）放到 `build/` 目录，electron-builder 会自动拾取。
+
+收藏数据位置：桌面版存 `%APPDATA%/bilibili-music-player/favorites.json`，CLI 版存仓库里的 `data/favorites.json`。两份互不相通，想换回 CLI 版听之前攒的收藏需要手动挪文件。
+
 ## 功能
 
 - **搜索**：关键词 400ms 防抖，分页「加载更多」，刷新后自动恢复上次关键词与搜索结果
@@ -127,9 +159,13 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 ## 目录结构
 
 ```
-├── server.js                 HTTP 入口 + 静态托管 + SPA 回退
+├── server.js                 CLI 入口：读取配置并监听端口
+├── electron/
+│   ├── main.js               桌面主进程：单实例锁、PORT=0、窗口与导航守卫
+│   └── env.js                在 config.js 求值前注入 DATA_DIR
 ├── src/
 │   ├── config.js             端口、UA、超时、缓存时长
+│   ├── createApp.js          构建 Express 应用（不监听端口），CLI 与桌面共用
 │   ├── routes.js             全部路由
 │   ├── api/http.js           请求封装、buvid cookie、Referer 注入
 │   ├── api/bilibili.js       搜索 + 音轨解析 + Song 模型
@@ -144,6 +180,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 │       ├── api.js  utils.js  icons.js
 │       ├── components/       Sidebar SearchBox SongList SongRow PlayerBar Svg
 │       └── assets/base.css   深色主题 + 布局
+├── release/                  electron-builder 输出（已忽略）
 └── data/favorites.json       运行时生成
 ```
 
@@ -161,6 +198,8 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 | `MAX_DURATION_SEC` | `1800` | 超过 30 分钟的视频不作为音乐结果返回 |
 | `RESOLVE_CACHE_TTL_MS` | `5 分钟` | 音轨地址缓存 |
 | `COOKIE_TTL_MS` | `10 分钟` | buvid cookie 有效期 |
+| `DATA_DIR` | `仓库内 data/` | 收藏等运行时数据目录。桌面版由 Electron 注入为 userData（见上节） |
+| `PUBLIC_DIR` | `client/dist` | 前端产物目录。桌面版自动指向 asar 内的产物，一般不用管 |
 
 ## 已知限制
 

@@ -13,13 +13,72 @@
     "dev:server": "node --watch server.js",
     "dev:client": "npm run dev --workspace client",
     "build": "npm run build --workspace client",
-    "setup": "npm install && npm run build"
+    "setup": "npm install && npm run build",
+    "electron": "npm run build && electron electron/main.js",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:zip": "npm run build && electron-builder --win zip",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.sensenova.bilibilimusic",
+    "productName": "B 站音乐播放器",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "files": [
+      "package.json",
+      "server.js",
+      "src/**/*",
+      "electron/**/*",
+      "client/dist/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "B 站音乐播放器",
+      "uninstallDisplayName": "B 站音乐播放器"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   },
   "license": "MIT"
 }

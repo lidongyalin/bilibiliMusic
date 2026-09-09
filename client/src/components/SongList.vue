@@ -1,5 +1,6 @@
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
 import Svg from './Svg.vue'
 import SongRow from './SongRow.vue'
 import { state } from '../state.js'
@@ -30,9 +31,52 @@ const emptyText = computed(() => {
   return state.keyword ? '没有找到相关歌曲，换个关键词试试' : '搜索任意歌曲开始播放'
 })
 
+// ---------- 触底自动加载 ----------
+
+const scrollEl = ref(null)
+const sentinel = ref(null)
+let observer = null
+
+const autoLoad = computed(() => state.view === 'search' && state.hasMore)
+const reachedEnd = computed(
+  () => state.view === 'search' && !state.hasMore && state.songs.length > 0
+)
+
+function resetScroll() {
+  scrollEl.value?.scrollTo({ top: 0 })
+}
+
+onMounted(() => {
+  // 哨兵始终挂在 DOM 上（不需要时 v-show 隐藏），避免 observer 反复 attach/detach。
+  // rootMargin 提前 360px 触发，等用户滚到底部时下一页通常已经拿到了。
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) loadMore()
+    },
+    { root: scrollEl.value, rootMargin: '0px 0px 360px 0px' }
+  )
+  if (sentinel.value) observer.observe(sentinel.value)
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  observer = null
+})
+
+// 翻页时 page 递增，不动滚动位置；新搜索或清空会把 page 压低，此时回到顶部
+watch(
+  () => state.page,
+  (page, prev) => {
+    if (page <= prev) resetScroll()
+  }
+)
+
+// ---------- 交互 ----------
+
 watch(
   () => state.view,
   (view) => {
+    resetScroll()
     if (view === 'favorites') void refreshFavorites()
   }
 )
@@ -49,7 +93,7 @@ function onPlay(song) {
       <span class="list-meta">{{ meta }}</span>
     </div>
 
-    <div class="list-scroll">
+    <div ref="scrollEl" class="list-scroll">
       <div class="list-inner">
         <ol class="song-list">
           <SongRow
@@ -72,8 +116,25 @@ function onPlay(song) {
           </el-empty>
         </div>
 
-        <div v-if="state.view === 'search' && state.hasMore" class="load-more-row">
-          <el-button :loading="state.loading" @click="loadMore">加载更多</el-button>
+        <!-- 触底哨兵：自动加载的触发点，同时充当可视的状态提示，点击也可立即加载 -->
+        <div
+          ref="sentinel"
+          v-show="autoLoad || reachedEnd"
+          class="load-status"
+          :class="{ clickable: autoLoad }"
+          :title="autoLoad ? '点击立即加载下一页' : ''"
+          @click="loadMore"
+        >
+          <template v-if="autoLoad && state.loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>正在加载下一页…</span>
+          </template>
+          <template v-else-if="autoLoad">
+            <span>滚动到底部自动加载</span>
+          </template>
+          <template v-else>
+            <span>没有更多了</span>
+          </template>
         </div>
       </div>
     </div>

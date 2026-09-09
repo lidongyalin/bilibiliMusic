@@ -350,11 +350,89 @@ button {
   color: var(--text-faint);
 }
 
-.load-more-row {
+/* 触底自动加载的状态行：既是 IntersectionObserver 的哨兵，也兼作可视提示，
+   点击可以直接触发加载，作为自动加载的兜底 */
+.load-status {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 10px 0 6px;
+  gap: 8px;
+  padding: 14px 0 8px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  user-select: none;
 }
+.load-status.clickable { cursor: pointer; }
+.load-status.clickable:hover { color: var(--text-dim); }
+.load-status .is-loading { color: var(--accent); }
+
+/* ---------- 搜索历史下拉 ----------
+   el-autocomplete 的弹层被 teleport 到 body，scoped 样式够不着，必须写在全局样式里。 */
+.history-popper {
+  padding: 0;
+  background: var(--bg-elev-2);
+  border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+}
+.history-popper .el-autocomplete__suggestion {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-elev-2);
+}
+.history-popper .el-autocomplete__suggestion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 7px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--line);
+}
+.history-clear {
+  border: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.history-clear:hover { color: var(--accent); background: var(--bg-hover); }
+.history-popper .el-autocomplete__suggestion li {
+  padding: 7px 12px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.history-popper .el-autocomplete__suggestion li.highlighted {
+  background: var(--accent-soft);
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.history-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-del {
+  flex: none;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+.history-popper .el-autocomplete__suggestion li:hover .history-del,
+.history-popper .el-autocomplete__suggestion li.highlighted .history-del {
+  opacity: 1;
+}
+.history-del:hover { color: var(--err); }
+.history-popper .el-scrollbar__thumb { background: var(--line); }
 
 /* ---------- 播放条 ---------- */
 .player-bar {
