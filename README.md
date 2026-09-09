@@ -1,8 +1,8 @@
 # B 站音乐播放器
 
-本地运行的 B 站音乐播放器：**搜索 → 在线流播放 → 收藏**。前后端都用 Node.js，界面全中文，深色主题。
+本地运行的 B 站音乐播放器：**搜索 → 在线流播放 → 收藏 → 歌单**。前后端都用 Node.js，界面全中文，深色主题，视觉与交互参考网易云音乐。
 
-只做在线流播放，不做离线下载。收藏写入本地 JSON 文件，重启不丢失。
+只做在线流播放，不做离线下载。收藏与歌单都写入本地 JSON 文件，重启不丢失。
 
 ## 快速开始
 
@@ -59,13 +59,15 @@ npm run dist        # 打当前系统的安装包
 
 **应用图标**是 B 站小电视，由 `scripts/make-icon.mjs` 用有向距离场（SDF）光栅化生成，零依赖、可离线重跑：`npm run icon`。图标在 `build/` 下，是 electron-builder 的构建输入，所以要进版本库。改 `LAYERS` 里的矢量定义就能换形状；改完重跑 `npm run dist` 才会进产物。
 
+**系统托盘与关闭行为**：应用常驻一个托盘图标，点它恢复主窗口，右键菜单有「显示主窗口」和「退出」。点窗口右上角的关闭按钮**不会直接退出**，而是弹一个确认框，在「最小化到托盘」和「退出程序」之间选——默认停在「最小化到托盘」，所以误点只是隐藏窗口而不是把播放中的队列一起关掉。真要退出时主进程会先清掉托盘图标再断掉内嵌的 Express 服务，否则端口和托盘资源都留着。托盘图标用的是 `build/icon.png` 缩到 32×32，所以换图标要重跑 `npm run icon` 才会在托盘里生效。
+
 生成脚本自带三重自检，画错会直接抛错而不是静默产出坏图标：大尺寸做关键采样点颜色校验，小尺寸做存在性校验（天线在设计空间只有 3.4 个单位宽，16px 下不足 1px，抗锯齿必然把它和底色混在一起，这是图标固有行为），另外把每个 PNG 反向解码回来和源像素逐字节比对，校验 ICO 目录的偏移与尺寸。脚本最后会打印 ASCII 预览，在没有截图能力的环境下也能肉眼确认图形。
 
 还有一个没解决的事：
 
 - **未签名，首次运行会被 Windows SmartScreen 拦**。未签名的 exe 第一次运行会弹红色警告，要点「更多信息 → 仍要运行」。需要代码签名证书（OV/EV）才能去掉，几百到一两千块一年——这不是代码问题。
 
-收藏数据位置：桌面版存 `%APPDATA%/bilibili-music-player/favorites.json`，CLI 版存仓库里的 `data/favorites.json`。两份互不相通，想换回 CLI 版听之前攒的收藏需要手动挪文件。
+数据位置：桌面版存 `%APPDATA%/bilibili-music-player/`（`favorites.json` 收藏、`playlists.json` 歌单），CLI 版存仓库里的 `data/` 下同名文件。两份互不相通，想换回 CLI 版听之前攒的收藏和歌单需要手动挪文件。这两个文件都是运行时生成的用户数据，不入库。
 
 ## 功能
 
@@ -87,11 +89,15 @@ npm run dist        # 打当前系统的安装包
 - **播放模式**：顺序播放 / 单曲循环 / 随机播放
 - **失败自动跳过**：某首播放失败时先原地重试一次，仍失败就切下一首，并提示「已切到下一首」。连续 3 首失败则停止自动切换并说明原因，避免断网时把整个队列高速过完。单曲循环是用户明确的选择，不切歌，只原地重试到上限。停在失败状态后按播放键会重新发起加载
 - **收藏**：星标乐观更新（先改界面再请求，失败自动回滚），独立收藏视图，侧边栏计数
+- **歌单**：侧边栏自建歌单区，支持创建、重命名、删除（删除前确认）。每个歌单有独立视图，头部显示封面、歌数、更新时间，带「播放全部」；曲目可单行加进、可从歌单里移除、可拖拽之外的顺序维护。重名自动加「 2」「 3」后缀，歌单名最多 40 字
+- **多选与批量加入**：列表右上角进多选模式，序号列换成勾选框（网格列不变，隐藏掉而不是改列宽，所以退出后布局不会抖），支持全选 / 取消 / 逐个勾选，顶栏显示已选数量。选中的歌可以整批加进指定歌单；选完自动退出多选模式。单选和批量共用同一条后端接口，返回 `added` / `skipped`，重复的曲目按 bvid 去重跳过，缺 bvid 的计入 skipped
 - **续播**：每首歌的播放位置存 `localStorage`，下次打开同一首歌自动续播
 - **歌词**：右侧滑入面板，当前行高亮并放大、自动滚到视野正中；点击任意一行跳到该时刻。进度条往前拖时歌词跟着回退。当前行已经在视野里就不自动滚，手动往上翻看时不会被顶回去。切歌时按曲名重新匹配，播放很快地切歌也不会串词（过期响应会被丢弃）。「收起」按钮或快捷键 `G` 关闭，开关状态记在 `localStorage`
-  - 歌词来自**网易云音乐的公开接口**：用当前曲名去搜，按「曲名相似度 × 歌手能否在标题里对上」打分，取最像的一首取它的 LRC。B 站本身不返回歌词数据（视频页 `__playinfo__`、`x/web-interface/view` 里都没有），这是目前唯一能拿到的通道
-  - 匹配不上的常见原因：标题里全是修饰词（「百万豪装录音棚大声听」「原版」「C 调」）、翻唱 / Remix / 纯伴奏谱、标题里夹了一整句歌词。这类直接显示「暂无歌词」，宁缺毋滥——不相关的歌词比空白更糟
-  - 匹配到的不是原视频那一版时，面板底部会标注「歌词来自网易云音乐《曲名》」，方便发现串版
+  - 歌词来自**多个公开接口并行取**（目前网易云音乐 + QQ 音乐）：两边同时搜，候选放在同一把尺子上打分，取最像的一首取它的 LRC。单个源报错不会拖垮另一个，`Promise.allSettled` 收结果；取不到任何一条候选，两个源的结果都不会被丢掉
+  - 打分是「曲名相似度 × 0.78 + 歌手能否在标题里对上 × 0.22」，再乘一个**时长因子**做裁决。时长从 QQ 源拿得到（`interval` 秒），网易云不带；因子按绝对差值分档：差 ≤6 秒给满分，6–30 秒从 1.0 线性降到 0.5，30–120 秒从 0.5 降到 0，超过 120 秒直接判 0。所以两源都命中同名歌时，时长对得上的那条会赢
+  - **候选自己不带时长时给中性 0.88，不是 0**。这一点不能省：网易云的候选没有时长数据，如果按「缺时长 = 差值 0 = 满分」或者反过来「缺时长 = 差值无穷 = 0 分」处理，都会把对的候选打错。中性值让没时长的候选存活，同时让带精确时长的 QQ 命中仍然胜出
+  - 标题噪音词（「百万豪装录音棚大声听」「原版」「C 调」）会额外扣 0.3，分数最后夹到 [0,1]，阈值 0.6 才认。匹配不上的常见原因：标题里全是修饰词、翻唱 / Remix / 纯伴奏谱、标题里夹了一整句歌词。这类直接显示「暂无歌词」，宁缺毋滥——不相关的歌词比空白更糟
+  - 匹配到的不是原视频那一版时，面板底部会标注歌词实际取自哪首歌、哪个来源，方便发现串版
   - 歌词只在内存里，**不落盘、不进 `localStorage`、不进 `data/`**。只有「面板是否打开」这个开关会被持久化
   - 实现细节：行定位与滚动判定是纯函数（`client/src/lyric-lines.js`），不掺 DOM 和响应式，所以能在 Node 里直接单测；`LyricPanel.vue` 只负责渲染和把结果喂给 `scrollTo`
 - **Media Session**：系统级锁屏/耳机/音量键控制，封面与曲目信息同步给系统
@@ -173,12 +179,20 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 |---|---|---|
 | GET | `/api/search?keyword=&page=` | 搜索，返回 `{keyword, page, list, total, hasMore}`。被风控拦下时是 `429 + {error: "搜索请求被 B 站风控拦下了，稍后再试一次"}`，不是空列表 |
 | GET | `/api/stream/:bvid` | 音频字节流，支持 `Range` / `Content-Range` / `Accept-Ranges` |
-| GET | `/api/lyrics?title=&artist=` | 按曲名取歌词，返回 `{ lines: [{time, text}], found, match, source }`。查不到是 `200 + found=false`，不是报错；缺曲名才 400 |
+| GET | `/api/lyrics?title=&artist=&durationSec=` | 按曲名取歌词，返回 `{ lines: [{time, text}], found, match, source }`。`durationSec` 用于给候选按时长接近度打分，**不是必填**，没有时按中性分处理。查不到是 `200 + found=false`，不是报错；缺曲名才 400 |
 | GET | `/api/probe/:bvid` | 音轨可用性探测，返回时长与带宽。**前端目前没调用**，留着给「播放前预检」这类改进用 |
 | GET | `/api/favorites` | 全部收藏 |
 | POST | `/api/favorites` | 收藏一首（body 含 `bvid`），重复收藏返回 200（幂等），首次 201 |
 | GET | `/api/favorites/check?ids=` | 批量查询收藏状态 |
 | DELETE | `/api/favorites/:id` | 取消收藏，不存在返回 404 |
+| GET | `/api/playlists` | 歌单摘要列表（不含曲目），按更新时间倒序 |
+| POST | `/api/playlists` | 创建歌单，body `{name}`；空名字回落默认名，重名自动加后缀 |
+| GET | `/api/playlists/:id` | 歌单详情，含曲目；不存在 404 |
+| PUT | `/api/playlists/:id` | 重命名，body `{name}`；返回 `{playlist, oldName}` |
+| DELETE | `/api/playlists/:id` | 删除歌单，返回被删的详情 |
+| POST | `/api/playlists/:id/songs` | 批量加歌，body `{songs: [{bvid, title, ...}]}`；返回 `{playlist, added, skipped}`，按 bvid 去重。空数组返回 400 |
+| DELETE | `/api/playlists/:id/songs/:bvid` | 从歌单移除一首，返回 `{removed, playlist}` |
+| PUT | `/api/playlists/:id/songs/order` | 重排曲目顺序，body `{songs: [bvid, ...]}`；顺序外的 id 会被丢弃 |
 
 统一错误格式 `{ "error": "中文说明" }`。
 
@@ -187,7 +201,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 ```
 ├── server.js                 CLI 入口：读取配置并监听端口
 ├── electron/
-│   ├── main.js               桌面主进程：单实例锁、PORT=0、窗口与导航守卫
+│   ├── main.js               桌面主进程：单实例锁、PORT=0、窗口与导航守卫、系统托盘
 │   └── env.js                在 config.js 求值前注入 DATA_DIR
 ├── src/
 │   ├── config.js             端口、UA、超时、缓存时长
@@ -196,30 +210,34 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 │   ├── api/http.js           请求封装、buvid cookie、Referer 注入
 │   ├── api/bilibili.js       搜索 + 音轨解析 + Song 模型
 │   ├── api/stream.js         音频流代理（Range 透传）
-│   ├── api/lyrics.js         LRC 解析、曲名清洗、网易云匹配、内存缓存
-│   └── store/favorites.js    收藏持久化（原子写入）
+│   ├── api/lyrics.js         LRC 解析、曲名清洗、多源匹配（网易云 + QQ）、时长打分、内存缓存
+│   ├── store/favorites.js    收藏持久化（原子写入）
+│   └── store/playlists.js    歌单持久化（原子写入）
 ├── scripts/dev.js            同时起前后端的开发脚本
 ├── scripts/verify-stream-guard.mjs  流代理防御逻辑的离线回归测试（不依赖网络）
 ├── scripts/test-lyrics.mjs   歌词匹配与 LRC 解析的离线单测（不联网）
+├── scripts/test-lyrics-multisource.mjs  多源匹配与时长假造 fetch 的单测（不联网）
 ├── scripts/test-lyric-lines.mjs  前端歌词行定位逻辑的单测（不依赖 DOM）
 ├── scripts/test-search-response.mjs  搜索响应分类的单测（正常 / 风控 / 报错）
 ├── scripts/test-search-cache.mjs     本地搜索页缓存的单测（不依赖 localStorage）
+├── scripts/test-playlists.mjs        歌单 store 的单测（用 tmpdir，不碰仓库内 data/）
 ├── scripts/verify-lyrics-route.mjs  /api/lyrics 路由接线自检（不监听端口）
 ├── scripts/probe-lyrics-live.mjs    联网实测：拿真实搜索结果看匹配质量
 ├── client/                   Vite + Vue 3 + Element Plus
 │   └── src/
-│       ├── App.vue  main.js  state.js  prefs.js
-│       ├── player.js  search.js  favorites.js  keyboard.js
+│       ├── App.vue  main.js  state.js  prefs.js  navigation.js  keyboard.js
+│       ├── player.js  search.js  favorites.js  playlists.js
 │       ├── lyrics.js  lyric-lines.js          歌词加载 / 行定位纯函数
 │       ├── search-cache.js                   本地分页缓存（LRU + 字节预算）
 │       ├── api.js  utils.js  icons.js
-│       ├── components/       Sidebar SearchBox SongList SongRow PlayerBar LyricPanel Svg
+│       ├── components/       Sidebar SearchBox SongList SongRow PlayerBar LyricPanel
+│       │                       PlaylistDialog PlaylistPicker Svg
 │       └── assets/base.css   深色主题 + 布局
 ├── release/                  electron-builder 输出（已忽略）
-└── data/favorites.json       运行时生成
+└── data/                     运行时生成（favorites.json、playlists.json，均已忽略）
 ```
 
-收藏写入是原子的：先写临时文件再 `rename`，且写入串行排队，避免并发写坏文件。
+收藏与歌单的写入都是原子的：先写临时文件再 `rename`，且写入串行排队，避免并发写坏文件。
 
 ## 配置
 
@@ -245,8 +263,9 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 - **需要联网**，不做离线缓存。断网时给出中文提示，不白屏。
 - 搜索结果是 B 站视频搜索的结果，长尾词可能混入非音乐内容；超过 30 分钟的条目会被过滤掉。
 - **搜索会被 B 站风控拦下，而且拦得没有规律**。请求太密、`page_size` 太大、或 IP 信誉差（机房 / 数据中心 IP 明显更严）时，会返回只有 `v_voucher` 的空响应。现在会被识别并提示，不会静默停列表，但**拦了就是拦了** —— 只重试一次，不做任何绕过。家用宽带一般没事；连续翻很多页仍被拦时，等几分钟再试，或先让列表用本地缓存顶着。
-- **歌词是按曲名猜出来的，不是这条视频的歌词**。匹配靠曲名相似度打分，阈值 0.55，所以偶有串版（同名翻唱、标题里没写歌手）。面板底部标注了实际取自哪首歌，看一眼就能发现。
-- **B 站不提供歌词**，所以没有「视频自带歌词」这条路可走。
+- **歌词是按曲名猜出来的，不是这条视频的歌词**。匹配靠曲名相似度 + 歌手 + 时长打分，阈值 0.6，所以偶有串版（同名翻唱、标题里没写歌手）。面板底部标注了实际取自哪首歌、哪个来源，看一眼就能发现。
+- **歌单是本地单文件**，跟收藏一样是单机单用户，没有同步、没有账号、没有多端共享。
+- **B 站不提供歌词**，所以没有「视频自带歌词」这条路可走；两个外部源也都是按曲名匹配，不是按曲目 ID 精确取。
 
 ## 合规
 
@@ -254,7 +273,7 @@ m4s 是渐进式 DASH（`ftyp → moov → sidx → (moof+mdat)*`），`moov` �
 
 歌词部分同样是这个前提下的取舍：
 
-- 歌词取自网易云音乐的公开接口，**每播放一首只发一次搜索请求**（曲名能对上就停，最多试 4 个查询），不是批量抓取，也没有做任何频率放大。
-- 歌词文本**只在内存里**，进程退出即消失：不写文件、不进 `localStorage`、不进 `data/`、不进任何备份或日志。只有「歌词面板是否打开」这个布尔开关会被持久化。
-- 匹配不到就显示「暂无歌词」，不会为了填满面板去放宽阈值或换数据源。
-- 如果版权方要求移除歌词功能，删掉 `src/api/lyrics.js` 与 `client/src/lyrics.js`、`client/src/lyric-lines.js`、`client/src/components/LyricPanel.vue` 即可，其余功能不受影响。
+- 歌词取自网易云音乐与 QQ 音乐的公开接口，**每播放一首每来源只发一次搜索 + 一次取词请求**，不是批量抓取，也没有做任何频率放大。
+- 歌词文本**只在内存里**，进程退出即消失：不写文件、不进 `localStorage`、不进 `data/`、不进任何备份或日志。只有「歌词面板是否打开」这个布尔开关会被持久化。歌单的曲目列表不含任何歌词内容，只存曲名、歌手和 bvid 这类元数据，因此歌单文件可以正常落盘。
+- 匹配不到就显示「暂无歌词」，不会为了填满面板去放宽阈值。
+- 如果版权方要求移除歌词功能，删掉 `src/api/lyrics.js` 与 `client/src/lyrics.js`、`client/src/lyric-lines.js`、`client/src/components/LyricPanel.vue`，并把 `routes.js` 里的 `/lyrics` 路由和 `api.js` 里的对应方法去掉即可，其余功能不受影响。

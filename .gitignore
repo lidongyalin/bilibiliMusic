@@ -34,8 +34,9 @@ data/*.db-shm
 data/*.db-wal
 data/uploads/
 
-# 收藏列表是运行时生成的用户数据，不入库
+# 收藏列表与歌单是运行时生成的用户数据，不入库
 data/favorites.json
+data/playlists.json
 
 # 本地调试残留与运行时缓存：含调试脚本里的伪造 JWT，严禁入库
 server.err

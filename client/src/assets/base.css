@@ -168,6 +168,95 @@ button {
 }
 .sidebar-footer p { margin: 0; }
 
+/* ---------- 侧栏歌单列表 ----------
+   歌单多了以后这一段自己滚，别把底部 footer 顶走。
+   条目用绿色渐变圆形图标 + 名字 + 曲数，是网易云那套观感。 */
+.playlist-block {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding: 0 2px;
+}
+.playlist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.playlist-add {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-size: 14px;
+  transition: background 0.13s, color 0.13s;
+}
+.playlist-add:hover { background: var(--bg-hover); color: var(--accent); }
+
+.playlist-scroll {
+  flex: 1;
+  min-height: 40px;
+  max-height: 210px;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text-dim);
+  transition: background 0.13s, color 0.13s;
+}
+.playlist-item:hover { background: var(--bg-hover); color: var(--text); }
+.playlist-item.is-active { background: var(--accent-soft); color: var(--text); }
+
+.playlist-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #3aa675 0%, #2f8f6b 55%, #237a5a 100%);
+  color: #fff;
+  font-size: 15px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.playlist-item.is-active .playlist-icon { color: #fff; }
+
+.playlist-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.playlist-item.is-active .playlist-name { font-weight: 600; }
+.playlist-count {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.playlist-empty {
+  margin: 4px 8px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.6;
+}
+
 /* ---------- 主区 ---------- */
 .main-area {
   grid-area: main;
@@ -556,6 +645,183 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ---------- 歌单详情头部 ----------
+   模仿网易云那套：左侧大封面（渐变方块 + 音符），中间名字和曲数，
+   右侧一排操作按钮。封面用渐变色而不是歌单里第一首歌的封面，
+   因为歌单是空的时也要有个稳定的视觉锚点。 */
+.playlist-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 26px 14px;
+  background:
+    linear-gradient(160deg, rgba(47, 143, 107, 0.16) 0%, rgba(255, 255, 255, 0) 55%);
+  border-bottom: 1px solid var(--line);
+}
+.ph-cover {
+  flex: none;
+  width: 76px;
+  height: 76px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #3aa675 0%, #2f8f6b 55%, #237a5a 100%);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.ph-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ph-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ph-sub { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+.ph-updated { margin: 0; font-size: 11.5px; color: var(--text-faint); }
+.ph-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+
+/* ---------- 列表头部操作区 ---------- */
+.list-header { position: relative; }
+.list-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  transition: background 0.13s, color 0.13s;
+}
+.header-btn:hover { background: var(--bg-hover); color: var(--text); }
+.header-btn .stroke-icon { width: 17px; height: 17px; }
+.header-danger:hover { background: rgba(255, 123, 114, 0.12); color: var(--err); }
+
+/* ---------- 多选工具条 ---------- */
+.select-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  margin: 0 12px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(251, 114, 153, 0.22);
+}
+.select-bar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.select-bar-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--text-dim);
+  font-size: 15px;
+  transition: background 0.13s, color 0.13s;
+}
+.select-bar-icon:hover { background: rgba(255, 255, 255, 0.1); color: var(--text); }
+.select-bar-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.select-bar-link {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--accent);
+  transition: background 0.13s;
+}
+.select-bar-link:hover { background: rgba(251, 114, 153, 0.18); }
+
+.select-bar-right { display: flex; align-items: center; }
+.select-bar-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 3px 12px var(--accent-glow);
+  transition: background 0.13s, transform 0.1s;
+}
+.select-bar-primary:hover { background: var(--accent-hover); }
+.select-bar-primary:active { transform: scale(0.97); }
+
+/* ---------- 行内勾选框 ----------
+   勾选框占用序号那一格（display:none 不占网格槽），
+   剩下的列按原轨道自动往左对齐，不用改 grid-template-columns。 */
+.song-check {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  cursor: pointer;
+}
+.song-row.select-mode .song-check { display: flex; }
+.song-row.select-mode .song-index { display: none; }
+
+.check-box {
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  border: 1.5px solid var(--text-faint);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: transparent;
+  transition: border-color 0.12s, background 0.12s;
+}
+.song-check:hover .check-box { border-color: var(--accent); }
+.check-box.is-checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.song-row.is-selected { background: var(--accent-soft); }
+.song-row.is-selected .song-title { color: var(--accent); }
+
+/* ---------- 加入歌单下拉 ---------- */
+.pick-trigger {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+}
+.pick-note {
+  padding: 6px 12px 2px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.pick-count {
+  margin-left: 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.row-remove:hover { background: rgba(255, 123, 114, 0.12); color: var(--err); }
+
+/* 歌单详情头部：名字长一点也挤不坏 */
+.list-header h2 { flex: 1; }
 
 /* 播放条上的歌词开关：开的时候跟播放模式按钮一样用强调色 */
 .transport-btn.lyric-toggle.is-active { color: var(--accent); }

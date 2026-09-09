@@ -1,7 +1,7 @@
 {
   "name": "bilibili-music-player",
-  "version": "1.3.0",
-  "description": "本地运行的 B 站音乐播放器：搜索、在线流播放、收藏",
+  "version": "1.4.0",
+  "description": "本地运行的 B 站音乐播放器：搜索、在线流播放、收藏、歌单",
   "author": "bilibili-music-player (local use only)",
   "type": "module",
   "main": "server.js",
@@ -15,7 +15,7 @@
     "dev:client": "npm run dev --workspace client",
     "build": "npm run build --workspace client",
     "setup": "npm install && npm run build",
-    "test": "node scripts/test-history.mjs && node scripts/test-lyrics.mjs && node scripts/test-lyric-lines.mjs && node scripts/test-search-response.mjs && node scripts/test-search-cache.mjs",
+    "test": "node scripts/test-history.mjs && node scripts/test-lyrics.mjs && node scripts/test-lyrics-multisource.mjs && node scripts/test-lyric-lines.mjs && node scripts/test-search-response.mjs && node scripts/test-search-cache.mjs && node scripts/test-playlists.mjs",
     "icon": "node scripts/make-icon.mjs",
     "electron": "npm run build && electron electron/main.js",
     "dist": "npm run build && electron-builder",

@@ -43,6 +43,11 @@ export const prefs = {
   getView() { return read('view', 'search') },
   setView(v) { write('view', v) },
 
+  // 上次打开的歌单 id。歌单 id 是后端给的随机串，删掉后 id 也失效，
+  // 所以读回来还要校验一遍它仍在歌单列表里，无效就退回搜索结果
+  getLastPlaylist() { return read('lastPlaylist', '') },
+  setLastPlaylist(id) { write('lastPlaylist', String(id || '')) },
+
   // 只存「是否打开歌词面板」这个开关。歌词文本本身属于版权内容，只放在内存里，不落任何持久化存储
   getLyricOpen() { return Boolean(read('lyricOpen', false)) },
   setLyricOpen(v) { write('lyricOpen', Boolean(v)) },

@@ -28,7 +28,7 @@ export async function loadLyrics(song) {
 
   state.lyricStatus = 'loading'
   try {
-    const res = await api.lyrics(song.title, song.author || '')
+    const res = await api.lyrics(song.title, song.author || '', song.durationSec || 0)
     if (mine !== seq) return // 期间又切了歌，这份结果不要了
     const lines = Array.isArray(res.lines) ? res.lines : []
     state.lyrics = lines

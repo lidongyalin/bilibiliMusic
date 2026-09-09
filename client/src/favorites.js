@@ -57,8 +57,3 @@ export async function toggleFavorite(song) {
 export function isCurrentFaved() {
   return Boolean(state.current && state.favoriteIds.has(state.current.bvid))
 }
-
-/** 当前视图的曲目集合，作为播放队列的上下文 */
-export function contextOfView(view = state.view) {
-  return view === 'favorites' ? state.favorites : state.songs
-}

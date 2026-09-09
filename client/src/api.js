@@ -36,11 +36,70 @@ export const api = {
     return request(`/api/favorites/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
-  /** 歌词。查不到时后端返回 found=false，不报错 */
-  lyrics(title, artist = '') {
+  /**
+   * 歌词。查不到时后端返回 found=false，不报错。
+   * durationSec 传当前曲目的总时长，后端拿它给候选打分（时长接近度），
+   * 有这条信号时几乎不会匹配到别首歌的同名版本。
+   */
+  lyrics(title, artist = '', durationSec = 0) {
     const q = new URLSearchParams({ title: String(title || '') })
     if (artist) q.set('artist', artist)
+    if (durationSec) q.set('durationSec', String(durationSec))
     return request(`/api/lyrics?${q}`)
+  },
+
+  // ---------- 歌单 ----------
+
+  listPlaylists() {
+    return request('/api/playlists')
+  },
+
+  createPlaylist(name = '') {
+    return request('/api/playlists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  },
+
+  getPlaylist(id) {
+    return request(`/api/playlists/${encodeURIComponent(id)}`)
+  },
+
+  renamePlaylist(id, name) {
+    return request(`/api/playlists/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  },
+
+  deletePlaylist(id) {
+    return request(`/api/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  /** 批量加歌：一次提交，服务端去重并返回实际新增数 */
+  addSongsToPlaylist(id, songs) {
+    return request(`/api/playlists/${encodeURIComponent(id)}/songs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ songs }),
+    })
+  },
+
+  removeSongFromPlaylist(id, bvid) {
+    return request(`/api/playlists/${encodeURIComponent(id)}/songs/${encodeURIComponent(bvid)}`, {
+      method: 'DELETE',
+    })
+  },
+
+  /** 重排歌单顺序：把歌单内曲目的顺序提交回后端 */
+  reorderPlaylistSongs(id, ordered) {
+    return request(`/api/playlists/${encodeURIComponent(id)}/songs/order`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ songs: ordered }),
+    })
   },
 
   /**

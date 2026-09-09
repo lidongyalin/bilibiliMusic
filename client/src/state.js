@@ -25,6 +25,19 @@ export const state = reactive({
   favoriteCount: 0,
   favLoading: false,
 
+  // 歌单。playlists 是摘要列表（侧栏用），currentPlaylist 是点开后的完整详情
+  playlists: [],
+  playlistLoading: false,
+  currentPlaylistId: prefs.getLastPlaylist(),
+  currentPlaylist: null,
+  playlistDetailLoading: false,
+  // 歌单内是否已含当前曲目：判断星标要不要显示成「已在歌单」
+  // 不单独存 Set，直接按 currentPlaylist.songs 查——量级小，查一次不心疼
+
+  // 多选。selectMode 是「进入多选」这个动作开关；selection 存选中的 bvid
+  selectMode: false,
+  selection: new Set(),
+
   // 播放
   queue: [],
   queueIndex: -1,
@@ -45,4 +58,6 @@ export const state = reactive({
   lyricMatch: null,
 })
 
-export const VIEWS = ['search', 'favorites']
+// 歌单视图用 'playlist'，具体是哪个歌单由 currentPlaylistId 决定。
+// 存进 localStorage 的 view 是上次离开时的值，回来时直接还原（prefs.getView）。
+export const VIEWS = ['search', 'favorites', 'playlist']

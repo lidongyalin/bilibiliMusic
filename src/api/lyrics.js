@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { CONFIG } from '../config.js';
-import { ApiError, upstreamHeaders } from './http.js';
+import { ApiError } from './http.js';
 
 /**
  * 歌词来源说明
@@ -8,18 +9,34 @@ import { ApiError, upstreamHeaders } from './http.js';
  * view 接口的 desc 里也几乎没有 LRC 时间戳（实测「晴天」前 10 条视频 0 命中，
  * 「歌词」「LRC」为关键词各 12 条也是 0 命中）。
  *
- * 所以按曲名去网易云的公开搜索/歌词接口查一次。每首歌只查一次，结果在内存里缓存，
- * 不落盘——歌词是有版权的内容，本项目的定位是个人本地使用。
+ * 所以按曲名去外部公开接口查：网易云与 QQ 音乐各查一轮，取打分最高的那首。
+ * QQ 那条链路能返回候选时长，所以打分时把「时长接近度」也算进去——
+ * 歌名能对上的候选里，时长也对得上的那首几乎不可能是错的。
+ *
+ * 每首歌只查一次，结果在内存里缓存，不落盘——歌词是有版权的内容，
+ * 本项目的定位是个人本地使用。两个来源都是公开接口，不打包任何对方 logo 或素材。
  */
 
 const SEARCH_URL = 'https://music.163.com/api/search/get';
 const LYRIC_URL = 'https://music.163.com/api/song/lyric';
 const REFERER = 'https://music.163.com/';
 
+// ---------- QQ 音乐 ----------
+
+const QQ_SEARCH_URL = 'https://c.y.qq.com/soso/fcgi-bin/client_search_cp';
+const QQ_LYRIC_URL = 'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg';
+const QQ_REFERER = 'https://y.qq.com/';
+// 公开写死的会话 tk；c.y.qq.com 上不带 cookie 的请求都能用它过检
+const QQ_GTK = '538128';
+// 公开的签名盐：sign = md5(base + '&&' + 盐)。没有这个 salt 接口会回 retcode:1101
+const QQ_SIGN_SALT = 'lZ0io9ZTlj9l7N';
+
 /** 搜索返回的候选数。太少容易漏掉正主，太多没必要 */
 const SEARCH_LIMIT = 30;
+/** QQ 那侧只要前 10 条：够对上正主，还少发一次请求 */
+const QQ_SEARCH_LIMIT = 10;
 /** 相似度门槛。低于这个值宁可不显示歌词，也不显示错歌的歌词 */
-const MATCH_THRESHOLD = 0.55;
+const MATCH_THRESHOLD = 0.6;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_MAX = 200;
 
@@ -159,14 +176,39 @@ export function lcsRatio(a, b) {
 }
 
 /**
- * 给候选打分。0.72 看歌名相似，0.28 看歌手是否能在标题里对上；
- * 衍生版本（钢琴版、翻唱…）扣分。返回 [0,1]。
+ * 时长吻合度：候选时长和实际时长差得越远扣分越多。
+ *
+ * 分三档：
+ *   |差| ≤ 6s      → 1.0（LRC 时间戳本来就有漂移，几秒内算同一首）
+ *   6s ~ 30s      → 1.0 线性降到 0.5
+ *   30s ~ 120s    → 0.5 线性降到 0
+ *   > 120s        → 0（基本可以断定是另一首歌）
+ *
+ * 不认「相对差」而认「绝对差」：一首 4 分钟的歌差 30s 是 12.5%，
+ * 一首 3 分钟的歌差 30s 也是 30s——对播放对齐来说这两个惩罚应当一样。
+ */
+export function durationFactor(expectedSec, candidateSec) {
+  if (!expectedSec || !candidateSec) return 0;
+  const gap = Math.abs(expectedSec - candidateSec);
+  if (gap <= 6) return 1;
+  if (gap <= 30) return 1 - 0.5 * ((gap - 6) / 24);
+  if (gap <= 120) return 0.5 - 0.5 * ((gap - 30) / 90);
+  return 0;
+}
+
+/**
+ * 给候选打分。0.78 看歌名相似，0.22 看歌手是否能在标题里对上，
+ * 再乘一个时长因子（没有时长数据时按 0.88 计，不奖不罚），衍生版本扣分。
+ *
+ * 之前是 0.72 标题 + 0.28 歌手：歌手那一项只能命中或不命中，
+ * 一旦标题对上而歌手对不上，分数就会掉到 0.43 以下，反而把正主（标题完全一致）刷下去。
+ * 把权重让给时长之后，正主的时长通常完全吻合，能稳稳拉开。
  *
  * 长词段要降权：B 站标题里常夹一整句歌词（「原谅我这一生不羁放纵爱自由」），
  * 它和「原谅我」这种短歌名能拿到满相似分，是误配的主要来源。
  * 中文歌名一般不超过 12 字，所以长词段的分数按 0.5 / 0.2 折减。
  */
-export function scoreCandidate(cleaned, segs, candidate) {
+export function scoreCandidate(cleaned, segs, candidate, expectedDurationSec = 0) {
   const nname = norm(candidate.name || '');
   let best = 0;
   for (const seg of segs) {
@@ -176,7 +218,7 @@ export function scoreCandidate(cleaned, segs, candidate) {
     else if (len > 12) ratio *= 0.5;
     if (ratio > best) best = ratio;
   }
-  let score = best * 0.72;
+  let base = best * 0.78;
 
   // 歌手名按非字母数字切开逐个比对：「冯沁苑(买辣椒也用券)」要能对上标题里的「买辣椒也用券」
   const artistChunks = (candidate.artists || [])
@@ -184,7 +226,15 @@ export function scoreCandidate(cleaned, segs, candidate) {
     .map((c) => c.trim())
     .filter((c) => c.length >= 2);
   const ncTitle = norm(cleaned);
-  if (artistChunks.some((c) => ncTitle.includes(norm(c)))) score += 0.28;
+  if (artistChunks.some((c) => ncTitle.includes(norm(c)))) base += 0.22;
+
+  // 时长因子：只有「候选自己带时长」时才按差值算；候选没时长数据时给中性 0.88。
+  // 不能把缺时长当 0 差：那会把网易云这种不带时长的正确候选直接打成 0 分。
+  // 中性值给 0.88 而不是 1.0，是为了让「时长完全吻合」的那条盖过「时长未知但标题一样」的那条。
+  const candDur = Number(candidate.durationSec) || 0;
+  const dFactor = expectedDurationSec && candDur > 0 ? durationFactor(expectedDurationSec, candDur) : 0.88;
+
+  let score = base * dFactor;
 
   if (VERSION_NOISE_RE.test(candidate.name || '')) score -= 0.3;
   return Math.max(0, Math.min(1, score));
@@ -192,10 +242,10 @@ export function scoreCandidate(cleaned, segs, candidate) {
 
 // ---------- 抓取 ----------
 
-async function netease(path, params) {
+async function netease(path, params, fetchFn = fetch) {
   const url = new URL(path, 'https://music.163.com');
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url, {
+  const res = await fetchFn(url, {
     headers: { 'User-Agent': CONFIG.UA, Referer: REFERER },
     signal: AbortSignal.timeout(CONFIG.API_TIMEOUT_MS),
   });
@@ -203,14 +253,107 @@ async function netease(path, params) {
   return res.json();
 }
 
-async function searchSongs(query) {
-  const json = await netease(SEARCH_URL, { s: query, type: '1', limit: String(SEARCH_LIMIT) });
-  return (json.result?.songs || []).filter((s) => Number.isInteger(s.id) && s.name);
+/** 网易云搜索：返回 {id, name, artists} 形式的候选 */
+async function searchSongs(query, fetchFn = fetch) {
+  const json = await netease(SEARCH_URL, { s: query, type: '1', limit: String(SEARCH_LIMIT) }, fetchFn);
+  return (json.result?.songs || [])
+    .filter((s) => Number.isInteger(s.id) && s.name)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      artists: (s.artists || []).map((a) => ({ name: a.name })),
+    }));
 }
 
-async function fetchLrcText(id) {
-  const json = await netease(LYRIC_URL, { id: String(id), lv: '-1', kv: '-1', tv: '-1' });
+async function fetchLrcText(id, fetchFn = fetch) {
+  const json = await netease(LYRIC_URL, { id: String(id), lv: '-1', kv: '-1', tv: '-1' }, fetchFn);
   return json.lrc?.lyric || '';
+}
+
+// --- QQ 音乐 ---
+
+/** 剥掉 JSONP 回调包裹：MusicJsonCallback({...}) → {...} */
+function stripCallback(text) {
+  return String(text || '')
+    .replace(/^\w+\(/, '')
+    .replace(/\)\s*$/, '');
+}
+
+/** 签名：md5(拼接好的 base URL + '&&' + 盐)。base 必须不含 sign/from 两个参数 */
+function qqSign(base) {
+  return createHash('md5').update(`${base}&&${QQ_SIGN_SALT}`).digest('hex');
+}
+
+const qqHeaders = { 'User-Agent': CONFIG.UA, Referer: QQ_REFERER };
+
+/** QQ 搜索：接口返回的是 JSONP 包裹的 JSON，字段名和网易云完全不同 */
+async function qqSearch(query, fetchFn = fetch) {
+  const base = `${QQ_SEARCH_URL}?w=${encodeURIComponent(query)}&p=1&n=${QQ_SEARCH_LIMIT}&cr=1&g_tk=${QQ_GTK}`;
+  const res = await fetchFn(`${base}&sign=${qqSign(base)}&from=utc_pc`, {
+    headers: qqHeaders,
+    signal: AbortSignal.timeout(CONFIG.API_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new ApiError(502, `歌词服务返回 HTTP ${res.status}`);
+  const json = JSON.parse(stripCallback(await res.text()));
+  return (json.data?.song?.list || [])
+    .filter((s) => s.songmid && s.songname)
+    .map((s) => ({
+      id: s.songmid,
+      name: s.songname,
+      artists: (s.singer || []).map((a) => ({ name: a.name })),
+      // interval 单位是秒
+      durationSec: Number(s.interval) || 0,
+    }));
+}
+
+/**
+ * QQ 歌词。返回的 lyric 字段是 base64，解出来是 UTF-8 文本（不是 UTF-16LE，
+ * 用 utf16le 解会把中文全变成乱码，只留 ASCII 时间戳可读）。
+ */
+async function qqFetchLrc(mid, fetchFn = fetch) {
+  const base = `${QQ_LYRIC_URL}?songmid=${encodeURIComponent(mid)}&format=0&g_tk=${QQ_GTK}&inCharset=utf8&outCharset=utf-8&notice=0`;
+  const res = await fetchFn(`${base}&sign=${qqSign(base)}&from=utc_pc`, {
+    headers: qqHeaders,
+    signal: AbortSignal.timeout(CONFIG.API_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new ApiError(502, `歌词服务返回 HTTP ${res.status}`);
+  const json = JSON.parse(stripCallback(await res.text()));
+  if (json.retcode !== 0 || !json.lyric) return '';
+  try {
+    return Buffer.from(String(json.lyric), 'base64').toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** 两个来源的声明：同一个 shape，方便在 fetchLyrics 里循环 */
+const SOURCES = [
+  {
+    key: 'netease',
+    name: '网易云音乐',
+    search: async (q, f) => (await searchSongs(q, f)).map((c) => ({ ...c, sourceKey: 'netease', sourceName: '网易云音乐' })),
+    fetchLrc: async (id, f) => fetchLrcText(id, f),
+  },
+  {
+    key: 'qq',
+    name: 'QQ 音乐',
+    search: async (q, f) => (await qqSearch(q, f)).map((c) => ({ ...c, sourceKey: 'qq', sourceName: 'QQ 音乐' })),
+    fetchLrc: async (id, f) => qqFetchLrc(id, f),
+  },
+];
+
+/** 所有来源并发查一轮，汇总成带 source 信息的候选，按分数降序返回 */
+async function searchAll(query, fetchFn = fetch) {
+  const settled = await Promise.allSettled(
+    SOURCES.map((src) => src.search(query, fetchFn).catch(() => []))
+  );
+  return settled.flatMap((s) => (s.status === 'fulfilled' ? s.value : []));
+}
+
+async function fetchLrcBySource(sourceKey, id, fetchFn = fetch) {
+  const src = SOURCES.find((s) => s.key === sourceKey);
+  if (!src) return '';
+  return src.fetchLrc(id, fetchFn);
 }
 
 // 内存缓存：歌词不会变，6 小时足够；只放内存不落盘
@@ -238,13 +381,19 @@ function cacheSet(key, data) {
  * 按曲名取歌词。查不到时返回 { lines: [], found: false }，不抛错——
  * 没有歌词是常态，不是异常，前端据此显示「暂无歌词」而不是错误提示。
  *
- * @returns {Promise<{ lines: Array, found: boolean, match: ?object, source: string }>}
+ * durationSec 是 B 站这侧的总时长，用来给候选打分（时长接近度），
+ * 不参与缓存 key——同一首歌的不同版本时长接近，缓存可以复用。
+ *
+ * @returns {Promise<{ lines: Array, found: boolean, match: ?object, source: string, durationScore: number }>}
  */
-export async function fetchLyrics(title, artist = '') {
+export async function fetchLyrics(title, artist = '', durationSec = 0, fetchFn = fetch) {
   const cleaned = cleanTitle(title);
   const segs = segments(cleaned);
-  if (!cleaned || !segs.length) return { lines: [], found: false, match: null, source: 'netease' };
+  if (!cleaned || !segs.length) {
+    return { lines: [], found: false, match: null, source: 'netease', durationScore: 0 };
+  }
 
+  const dur = Number(durationSec) > 0 ? Number(durationSec) : 0;
   const key = norm(cleaned) + '|' + norm(artist);
   const cached = cacheGet(key);
   if (cached) return cached;
@@ -265,33 +414,34 @@ export async function fetchLyrics(title, artist = '') {
 
   for (const q of queries.slice(0, 4)) {
     if (!norm(q)) continue;
+    // 两个来源并发，各自失败互不影响：某个来源挂掉不该让另一条链路的命中作废
     let candidates;
     try {
-      candidates = await searchSongs(q);
+      candidates = await searchAll(q, fetchFn);
     } catch {
       continue;
     }
     for (const c of candidates) {
-      const score = scoreCandidate(cleaned, segs, c);
-      if (!best || score > best.score) best = { score, song: c };
+      const score = scoreCandidate(cleaned, segs, c, dur);
+      if (!best || score > best.score) best = { score, candidate: c };
     }
     if (best && best.score >= MATCH_THRESHOLD) break;
   }
 
   if (!best || best.score < MATCH_THRESHOLD) {
-    const empty = { lines: [], found: false, match: null, source: 'netease' };
+    const empty = { lines: [], found: false, match: null, source: 'netease', durationScore: 0 };
     cacheSet(key, empty);
     return empty;
   }
 
   let lines = [];
   try {
-    lines = parseLrc(await fetchLrcText(best.song.id));
+    lines = parseLrc(await fetchLrcBySource(best.candidate.sourceKey, best.candidate.id, fetchFn));
   } catch {
     lines = [];
   }
   if (!lines.length) {
-    const empty = { lines: [], found: false, match: null, source: 'netease' };
+    const empty = { lines: [], found: false, match: null, source: 'netease', durationScore: 0 };
     cacheSet(key, empty);
     return empty;
   }
@@ -300,13 +450,15 @@ export async function fetchLyrics(title, artist = '') {
     lines,
     found: true,
     match: {
-      id: best.song.id,
-      name: best.song.name,
-      artist: (best.song.artists || []).map((a) => a.name).join(' / '),
+      id: best.candidate.id,
+      name: best.candidate.name,
+      artist: (best.candidate.artists || []).map((a) => a.name).join(' / '),
       score: Math.round(best.score * 100) / 100,
-      source: '网易云音乐',
+      source: best.candidate.sourceName,
+      durationSec: best.candidate.durationSec || 0,
     },
-    source: 'netease',
+    source: best.candidate.sourceKey,
+    durationScore: Math.round(durationFactor(dur, best.candidate.durationSec || 0) * 100) / 100,
   };
   cacheSet(key, result);
   return result;
