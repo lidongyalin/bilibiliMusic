@@ -64,3 +64,5 @@ src/util/.image-cache.json
 
 # 后端运行日志（开发时重定向输出）
 *.out
+
+.merkle-snapshot.json

@@ -65,6 +65,11 @@ function onSubItem(child) {
   child.onClick && child.onClick()
 }
 
+/** 手机 Action Sheet 模式下，子菜单盖住主菜单，需要一个返回入口（桌面隐藏） */
+function onSubBack() {
+  state.subMenu = null
+}
+
 /** 子菜单定位：父项右侧展开，越界就翻到左边 */
 async function positionSub() {
   await nextTick()
@@ -150,6 +155,10 @@ watch(subItems, (v) => {
       :style="{ left: (state.subMenuPos?.x ?? 0) + 'px', top: (state.subMenuPos?.y ?? 0) + 'px' }"
       @contextmenu.prevent
     >
+      <li class="ctx-item ctx-back" @click.stop="onSubBack">
+        <span class="ctx-arrow ctx-back-arrow">‹</span>
+        <span class="ctx-label">返回</span>
+      </li>
       <li
         v-for="(c, i) in subItems"
         :key="i"

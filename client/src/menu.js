@@ -1,9 +1,14 @@
 import { state } from './state.js'
 import { ElMessage } from 'element-plus'
-import { isLocalSong, playSong, playNext, addToQueue, togglePlay } from './player.js'
-import { toggleFavorite } from './favorites.js'
+import {
+  isLocalSong, playSong, playNext, addToQueue, togglePlay,
+  cycleMode, prev, setSpeed, speedLabel, sleepRemaining, startSleepTimer, SLEEP_OPTIONS, SPEED_OPTIONS,
+} from './player.js'
+import { toggleFavorite, isCurrentFaved } from './favorites.js'
 import { addSongsToPlaylist } from './playlists.js'
 import { saveMeta, restoreMeta, removeSongs, exportM3U } from './library.js'
+import { toggleLyricPanel } from './lyrics.js'
+import { MODE_LABELS } from './icons.js'
 import { clip } from './utils.js'
 
 /**
@@ -98,6 +103,54 @@ export function songMenu(x, y, song, list) {
 /** 播放这一首，并把它所在的列表设为队列 */
 export function playSongAt(song, list) {
   void playSong(song, Array.isArray(list) ? list : undefined)
+}
+
+/**
+ * 播放条「更多」菜单（手机端播放条精简后，被收起的控制都进这里）。
+ * 不依赖坐标语义：手机上渲染成底部 Action Sheet，窄窗口下是普通菜单。
+ */
+export function playerMenu() {
+  const hasSong = Boolean(state.current)
+  const faved = hasSong && isCurrentFaved()
+  const sleeping = sleepRemaining() > 0
+
+  const speedChildren = SPEED_OPTIONS.map((v) => ({
+    label: v === 1 ? '原速' : `${v}×`,
+    onClick: () => setSpeed(v),
+  }))
+
+  const sleepChildren = SLEEP_OPTIONS.map((m) => ({
+    label: m >= 60 ? `${m / 60} 小时后停止` : `${m} 分钟后停止`,
+    onClick: () => startSleepTimer(m),
+  }))
+  if (sleeping) {
+    sleepChildren.push({ divider: true })
+    sleepChildren.push({ label: '立即停止', icon: 'close', onClick: () => startSleepTimer(0) })
+  }
+
+  return [
+    {
+      label: faved ? '取消收藏' : '收藏',
+      icon: faved ? 'star-filled' : 'star',
+      disabled: !hasSong,
+      onClick: () => toggleFavorite(state.current),
+    },
+    { label: `播放模式：${MODE_LABELS[state.mode]}`, icon: 'mode', onClick: cycleMode },
+    { label: '上一首', icon: 'prev', disabled: !hasSong, onClick: () => prev() },
+    {
+      label: state.lyricOpen ? '收起歌词' : '显示歌词',
+      icon: 'lyrics',
+      onClick: toggleLyricPanel,
+    },
+    sep,
+    { label: `倍速：${speedLabel(state.speed)}`, icon: 'speed', children: speedChildren },
+    { label: sleeping ? '睡眠定时（进行中）' : '睡眠定时', icon: 'sleep', children: sleepChildren },
+    { label: '均衡器', icon: 'eq', onClick: () => { state.eqOpen = true } },
+    sep,
+    { label: '播放队列', icon: 'add-queue', onClick: () => { state.queueOpen = true } },
+    { label: '沉浸式播放页', icon: 'immersive', onClick: () => { state.immersive = true } },
+    { label: '设置', icon: 'settings', onClick: () => { state.settingsOpen = true } },
+  ]
 }
 
 /** 歌单 / 分组 / 智能歌单的右键菜单（F17） */
@@ -201,6 +254,16 @@ export const MENU_ICONS = {
   external: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   export: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  prev: '<path d="m19 5-7 7 7 7"/><path d="M12 5l-7 7 7 7"/>',
+  mode: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  lyrics: '<path d="M4 5h16M4 10h16M4 15h9"/>',
+  speed: '<path d="M12 14 16 8"/><path d="M5.5 18a8 8 0 1 1 13 0"/>',
+  sleep: '<path d="M20 13A8 8 0 1 1 11 4a6.5 6.5 0 0 0 9 9Z"/>',
+  eq: '<path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="10" r="2"/><circle cx="12" cy="15" r="2"/><circle cx="19" cy="8" r="2"/>',
+  immersive: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
+  settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>',
+  more: '<circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/>',
+  queue: '<path d="M4 6h11M4 11h11M4 16h7"/><circle cx="18.5" cy="16.5" r="2.5"/><path d="M21 16.5V9l-3 1"/>',
 }
 
 /** 时长格式化：给菜单副标题用 */

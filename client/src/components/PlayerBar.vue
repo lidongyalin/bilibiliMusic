@@ -22,6 +22,7 @@ import {
 } from '../player.js'
 import { toggleLyricPanel } from '../lyrics.js'
 import { isCurrentFaved, toggleFavorite } from '../favorites.js'
+import { openMenu, playerMenu } from '../menu.js'
 import { formatTime } from '../utils.js'
 
 const playing = computed(() => state.status === 'playing')
@@ -108,12 +109,27 @@ function onSleepChange(v) {
   }
   startSleepTimer(v)
 }
+
+/**
+ * 「更多」菜单：手机端播放条收起的控制（收藏/模式/上一首/歌词/倍速/定时/EQ/队列/沉浸/设置）
+ * 都从这里进。复用 contextMenu 通道——手机上是底部 Action Sheet，窄窗口下是普通菜单。
+ */
+function openPlayerMenu() {
+  openMenu(window.innerWidth / 2, window.innerHeight - 80, playerMenu())
+}
 </script>
 
 <template>
   <footer class="player-bar">
     <div class="now-playing">
-      <div class="np-art">
+      <div
+        class="np-art"
+        role="button"
+        tabindex="0"
+        :title="hasSong ? '打开沉浸式播放页' : ''"
+        @click="state.immersive = true"
+        @keydown.enter="state.immersive = true"
+      >
         <img
           v-if="state.current?.cover && coverOk"
           :src="state.current.cover"
@@ -123,10 +139,28 @@ function onSleepChange(v) {
         <span v-else class="cover-fallback"><el-icon><Film /></el-icon></span>
       </div>
 
-      <div class="np-text">
+      <div
+        class="np-text"
+        role="button"
+        tabindex="0"
+        :title="hasSong ? '打开沉浸式播放页' : ''"
+        @click="state.immersive = true"
+        @keydown.enter="state.immersive = true"
+      >
         <div class="np-title">{{ state.current?.title || '未选择曲目' }}</div>
         <div class="np-author">{{ state.current?.author || '—' }}</div>
       </div>
+
+      <button
+        type="button"
+        class="row-btn more-btn mobile-only"
+        :disabled="!hasSong"
+        title="更多操作"
+        aria-label="更多操作"
+        @click="openPlayerMenu"
+      >
+        <Svg :d="ICON_PATHS.more" :size="19" />
+      </button>
 
       <button
         type="button"
@@ -157,7 +191,7 @@ function onSleepChange(v) {
 
         <button
           type="button"
-          class="transport-btn"
+          class="transport-btn prev-btn"
           :disabled="!hasSong"
           title="上一首（P）"
           aria-label="上一首"
@@ -186,6 +220,17 @@ function onSleepChange(v) {
           @click="next(false)"
         >
           <el-icon><DArrowRight /></el-icon>
+        </button>
+
+        <button
+          type="button"
+          class="transport-btn queue-btn mobile-only"
+          :class="{ 'is-active': state.queueOpen }"
+          :title="`播放队列（${queueCount} 首）`"
+          aria-label="播放队列"
+          @click="state.queueOpen = !state.queueOpen"
+        >
+          <Svg :d="ICON_PATHS.queue" :size="19" />
         </button>
 
         <button

@@ -40,6 +40,17 @@ export const ICON_PATHS = {
   lyrics:
     '<rect x="3" y="5" width="18" height="14" rx="2.2"/>' +
     '<path d="M7 11.5h4"/><path d="M7 14.8h10"/>',
+
+  // 播放条「更多」：竖排三点
+  more:
+    '<circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none"/>',
+
+  // 播放队列：列表 + 音符
+  queue:
+    '<path d="M4 6h11M4 11h11M4 16h6"/><circle cx="17.5" cy="16.5" r="2.6"/>' +
+    '<path d="M20.1 16.5V8.6l-3 1.1"/>',
 }
 
 export const MODE_ICONS = {

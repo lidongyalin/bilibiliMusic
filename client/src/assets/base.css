@@ -261,6 +261,28 @@ button {
   line-height: 1.6;
 }
 
+/* 侧栏三段歌单列表的占位容器：桌面用 display:contents 透明，
+   手机断点里变成「歌单」按钮的下拉面板 */
+.playlists-wrap { display: contents; }
+
+/* 手机端专用元素：桌面一律隐藏，640px 断点里按需放出来。
+   必须 !important：.row-btn/.transport-btn 等后定义的 display:grid 会盖掉它 */
+.mobile-only { display: none !important; }
+
+/* 手机端 sheet / 浮层复用的动画 */
+@keyframes sheet-up {
+  from { transform: translateY(28px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sheet-drop {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
 /* ---------- 主区 ---------- */
 .main-area {
   grid-area: main;
@@ -1276,6 +1298,8 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 .ctx-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .ctx-arrow { color: var(--text-faint); font-size: 15px; }
 .ctx-count { font-size: 11.5px; color: var(--text-faint); }
+/* 子菜单的「返回」入口只给手机 Action Sheet 用 */
+.ctx-back { display: none; }
 
 /* ---------- 播放队列面板（F3） ---------- */
 .queue-mask {
@@ -1872,6 +1896,7 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   }
 
   .sidebar {
+    position: relative;
     flex-direction: row;
     align-items: center;
     gap: 10px;
@@ -1879,12 +1904,12 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
     padding-top: calc(10px + env(safe-area-inset-top, 0px));
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    overflow-x: auto;
-    overflow-y: hidden;
+    /* 歌单面板要溢出顶栏显示，不能裁剪；导航收纳后内容放得下，不再横滚 */
+    overflow: visible;
   }
   .brand,
   .sidebar-footer { display: none; }
-  .sidebar .search-wrap { flex: 1 1 0; min-width: 0; }
+  .sidebar .search-wrap { flex: 1 1 96px; min-width: 96px; }
   /* el-menu 默认是 display:block，只写 flex-direction 是无效的，必须显式给 display:flex
      否则手机端「搜索结果 / 我的收藏」会上下堆叠，白占顶部一整行 */
   .sidebar .el-menu {
@@ -1894,27 +1919,97 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
     flex-direction: row;
     border-bottom: 0;
   }
+  /* 菜单项图标化：文字收起来，语义靠 aria-label，数字变成右上角角标 */
   .sidebar .el-menu-item {
-    height: 36px;
-    line-height: 36px;
+    position: relative;
+    height: 40px;
+    width: 40px;
+    line-height: 40px;
     margin: 0;
-    padding: 0 10px;
-    font-size: 13px;
+    padding: 0;
+    justify-content: center;
     white-space: nowrap;
   }
-  .sidebar .el-menu-item .el-icon { font-size: 16px; margin-right: 7px; }
+  .sidebar .el-menu-item .el-icon { font-size: 18px; margin-right: 0; }
+  .sidebar .el-menu-item > span:not(.fav-count) { display: none; }
   .fav-count { margin-left: 4px; padding: 0 5px; font-size: 10.5px; }
+  .sidebar .el-menu-item .fav-count {
+    position: absolute;
+    top: 2px;
+    right: 1px;
+    margin-left: 0;
+    padding: 0 4px;
+    font-size: 9.5px;
+    line-height: 14px;
+  }
+
+  /* ---------- 「歌单」入口与下拉面板 ----------
+     手机端三段歌单列表（智能歌单 / 曲库分组 / 我创建的歌单）收进面板，
+     点歌单按钮展开，选完自动收起 */
+  .mobile-only { display: inline-flex !important; }
+  .playlists-toggle {
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    background: var(--bg-hover);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.13s;
+  }
+  .playlists-toggle .el-icon { font-size: 16px; color: var(--accent); }
+  .playlists-toggle.is-active { background: var(--accent-soft); }
+  .playlists-toggle .fav-count { margin-left: 0; padding: 0 5px; font-size: 10px; }
+
+  .playlists-wrap { display: none; }
+  .sidebar.is-sheet-open { z-index: 60; }
+  .sidebar.is-sheet-open .playlists-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    max-height: min(58vh, 440px);
+    overflow-y: auto;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 24px 42px rgba(0, 0, 0, 0.42);
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    animation: sheet-drop 0.18s ease;
+    transform-origin: top;
+  }
+  /* 面板整体滚动，里面每段列表不再自己限高 */
+  .sidebar.is-sheet-open .playlist-scroll { max-height: none; }
+  .sidebar.is-sheet-open .playlist-block { flex: none; }
+
+  /* 面板遮罩：点击只关面板，不穿透到底下列表 */
+  .sheet-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.28);
+    animation: fade-in 0.15s ease;
+  }
 
   .list-header { padding: 12px; }
   .list-header h2 { font-size: 15px; }
   .list-meta { font-size: 11.5px; }
   .list-inner { padding: 0 6px 10px; }
 
-  /* 序号列保留（均衡器与 loading 转圈都在里面），只隐藏其中的数字 */
+  /* 序号列保留（均衡器与 loading 转圈都在里面），只隐藏其中的数字。
+     长按呼出操作菜单，禁掉系统自带的文本选择/图片预览 */
   .song-row {
     grid-template-columns: 24px 40px minmax(0, 1fr) 44px auto;
     gap: 9px;
     padding: 8px 6px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .song-index-num { display: none; }
   .song-cover { width: 40px; height: 40px; border-radius: 7px; }
@@ -1934,37 +2029,55 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   .ph-play-label { font-size: 12px; }
   .header-btn { height: 32px; padding: 0 8px; }
 
-  /* 播放条三行：封面+静音 / 控制+进度 / 工具按钮。
-     轨道高度必须给 auto，否则内容会超出 .app-shell 分给它的 96px 被裁掉。
-     .right-col 用 display:contents 拆掉自己，让里面的两行直接当网格项。 */
+  /* 播放条两行：上=封面+标题+更多 | 播放+下一首+队列；下=进度条。
+     收藏/模式/上一首/歌词/倍速/定时/EQ/沉浸/设置 全部收进「更多」菜单
+     （menu.js 的 playerMenu）。轨道高度必须给 auto，否则内容会超出
+     .app-shell 分给它的轨道被裁掉。.player-controls 用 display:contents
+     拆掉自己，让按钮组和进度条直接当播放条的网格项。 */
   .player-bar {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
     grid-template-areas:
-      'now volume'
-      'controls controls'
-      'util util';
-    row-gap: 4px;
+      'now controls'
+      'progress progress';
+    row-gap: 2px;
     padding: 8px 12px;
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   }
   .now-playing { grid-area: now; gap: 9px; }
-  .player-controls { grid-area: controls; }
-  .right-col { display: contents; }
-  .volume-row { grid-area: volume; }
-  .volume-row .el-slider { display: none; }
-  .util-row { grid-area: util; justify-content: flex-end; flex-wrap: wrap; }
-  .util-btn { min-width: 28px; height: 30px; padding: 0 6px; }
+  /* 封面/标题可点：进沉浸式播放页 */
+  .np-art,
+  .np-text { cursor: pointer; }
   .np-art { width: 40px; height: 40px; border-radius: 7px; }
   .np-title { font-size: 12.5px; }
   .np-author { font-size: 11.5px; }
-  .controls-buttons { gap: 2px; }
+  .more-btn {
+    width: 38px;
+    height: 38px;
+    color: var(--text-dim);
+    align-items: center;
+    justify-content: center;
+  }
+  /* 收藏挪进「更多」菜单，行首空间留给标题 */
+  .now-playing .row-btn:not(.more-btn) { display: none; }
+  .player-controls { display: contents; }
+  .controls-buttons { grid-area: controls; gap: 2px; }
+  /* mini bar 只留 播放 / 下一首 / 队列，其余进「更多」 */
+  .controls-buttons .mode-btn,
+  .controls-buttons .prev-btn,
+  .controls-buttons .lyric-toggle { display: none; }
+  .right-col { display: none; }
   .transport-btn { width: 40px; height: 40px; }
-  /* 播放键必须 ≤42px：它是两行播放条里最高的元素，44px 会把内容（141px）
-     推出 .app-shell 分给播放条的 140.8px 轨道 */
+  /* 播放键必须 ≤42px：它是行内最高的元素，44px 会把内容
+     推出 .app-shell 分给播放条的轨道 */
   .play-btn { width: 42px; height: 42px; font-size: 20px; margin: 0 2px; }
-  .mute-btn { width: 40px; height: 40px; }
-  .progress-row { max-width: none; gap: 8px; }
+  .queue-btn {
+    color: var(--text-dim);
+    align-items: center;
+    justify-content: center;
+  }
+  .queue-btn.is-active { color: var(--accent); }
+  .progress-row { grid-area: progress; max-width: none; gap: 8px; }
   .time { min-width: 32px; font-size: 11px; }
 
   /* 触屏：跑道加高、thumb 加大，否则 6px 高的跑道手指很难点准 */
@@ -1987,19 +2100,73 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 
   .el-message { padding: 8px 14px; font-size: 12.5px; }
 
-  /* 手机上整屏宽。底边由 App.vue 量出的 --bar-real-h 决定（播放条这时是三行） */
+  /* 触屏滚动不需要桌面式滚动条（手机浏览器是 overlay 滚动条，这条主要管窄窗口） */
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
+
+  /* 手机上整屏宽。底边由 App.vue 量出的 --bar-real-h 决定（播放条这时是两行） */
   .lyric-panel { width: 100%; }
 
   /* 浮层贴边 */
   .queue-panel { width: 100%; max-width: 100%; border-left: 0; box-shadow: none; }
   .queue-head { padding: 12px 12px 10px; }
   .queue-scroll { padding: 6px; }
-  .ctx-menu { min-width: 168px; max-width: calc(100vw - 20px); }
 
-  /* 弹窗：宽度是模板里写死的 px，窄屏必须用 !important 压过内联样式 */
+  /* 上下文菜单在手机上是底部 Action Sheet：
+     root 变成遮罩拦住穿透，菜单贴底全宽——右键和长按共用同一份数据 */
+  .ctx-root {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.4);
+    animation: fade-in 0.15s ease;
+  }
+  .ctx-menu {
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    min-width: 0;
+    max-width: none;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 0;
+    padding: 8px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+    max-height: 72vh;
+    overflow-y: auto;
+    animation: sheet-up 0.2s ease;
+  }
+  .ctx-item {
+    min-height: 46px;
+    padding: 11px 12px;
+    font-size: 14.5px;
+    border-radius: 9px;
+  }
+  /* 子菜单盖住主菜单（同样贴底），顶部提供「返回」；桌面不受影响 */
+  .ctx-root:has(.ctx-sub) > .ctx-menu:not(.ctx-sub) { display: none; }
+  .ctx-back { display: flex; color: var(--text-dim); }
+  .ctx-back-arrow { font-size: 17px; margin-right: -3px; }
+  .ctx-sub {
+    position: fixed;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    min-width: 0;
+  }
+
+  /* 弹窗改成底部面板：贴底、圆角在顶、自带滑入动画。
+     overlay 容器用 flex column + margin-top:auto 压住 el-dialog 默认的 15vh 顶距，
+     内容超高时 margin 塌缩、从顶部开始滚动，不会被裁。
+     宽度是模板里写死的 px，窄屏必须用 !important 压过内联样式 */
+  .el-overlay-dialog { display: flex; flex-direction: column; align-items: center; }
   .settings-dialog,
   .meta-dialog,
-  .dup-dialog { width: 96vw !important; }
+  .dup-dialog {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: auto 0 0 !important;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: sheet-up 0.24s ease;
+  }
   .settings-body { max-height: 52vh; }
   .st-row { flex-wrap: wrap; gap: 8px; }
   .st-label { width: auto; flex: 1 1 100%; }
@@ -2034,6 +2201,20 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   .imm-btn { width: 40px; height: 40px; }
   .imm-btn-main { width: 56px; height: 56px; }
   .imm-main { gap: 14px; padding: 32px 14px 48px; }
+
+  /* 沉浸页的进度条同样给触屏扩命中区 */
+  .imm-progress .el-slider__runway,
+  .imm-progress .el-slider__bar { height: 8px; }
+  .imm-progress .el-slider__button { width: 16px; height: 16px; }
+  .imm-progress .el-slider__runway::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -15px;
+    bottom: -15px;
+    background: transparent;
+  }
 }
 
 /* 380px 以下的窄屏再让一步 */
@@ -2041,7 +2222,9 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   .song-row { grid-template-columns: 22px 38px minmax(0, 1fr) 40px; }
   .song-cover { width: 38px; height: 38px; }
   .song-meta { display: none; }
-  .sidebar .el-menu-item { padding: 0 8px; }
+  /* 顶栏菜单已图标化，宽度不够时压缩搜索框而不是裁按钮 */
+  .sidebar .search-wrap { flex-basis: 72px; min-width: 72px; }
+  .playlists-toggle { padding: 0 9px; }
 }
 
 /* 手机横屏（矮屏）：压扁播放条，把纵向空间让给列表。

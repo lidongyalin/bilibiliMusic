@@ -68,12 +68,78 @@ function onAddToPlaylist(id) {
 function onContextMenu(e) {
   e.preventDefault()
   e.stopPropagation()
-  const song = props.song
+  openMenuAt(e.clientX, e.clientY)
+}
+
+/** 在指定视口坐标弹出当前曲目的上下文菜单（右键 / 长按共用） */
+function openMenuAt(x, y) {
   state.contextMenu = {
-    x: e.clientX,
-    y: e.clientY,
-    items: songMenu(e.clientX, e.clientY, song, currentList()),
+    x,
+    y,
+    items: songMenu(x, y, props.song, currentList()),
   }
+}
+
+// ---------- 触屏长按 ----------
+// 手机没有右键：按住 500ms 视为「右键」。移动超过阈值视为滚动，取消计时；
+// 触发后吞掉随行的 click，避免松手瞬间又把歌切了。
+
+const LONG_PRESS_MS = 500
+const MOVE_THRESHOLD = 12
+
+let pressTimer = 0
+let pressX = 0
+let pressY = 0
+let pressHandled = false
+
+function onTouchStart(e) {
+  if (inSelectMode.value || pressTimer) return
+  const t = e.touches[0]
+  if (!t) return
+  pressX = t.clientX
+  pressY = t.clientY
+  pressHandled = false
+  pressTimer = window.setTimeout(() => {
+    pressTimer = 0
+    pressHandled = true
+    openMenuAt(pressX, pressY)
+  }, LONG_PRESS_MS)
+}
+
+function onTouchMove(e) {
+  if (!pressTimer) return
+  const t = e.touches[0]
+  if (!t) return
+  if (Math.abs(t.clientX - pressX) > MOVE_THRESHOLD || Math.abs(t.clientY - pressY) > MOVE_THRESHOLD) {
+    clearTimeout(pressTimer)
+    pressTimer = 0
+  }
+}
+
+function onTouchEnd() {
+  if (pressTimer) {
+    clearTimeout(pressTimer)
+    pressTimer = 0
+  }
+}
+
+function onRowClick() {
+  // 长按刚触发过：这次 click 是松手带出来的，不是选择意图
+  if (pressHandled) {
+    pressHandled = false
+    return
+  }
+  if (inSelectMode.value) {
+    toggleSelect(props.song.bvid)
+    return
+  }
+  if (isLoading.value) return
+  if (isCurrent.value) {
+    togglePlay()
+    return
+  }
+  emit('play', props.song)
+}
 }
 </script>
 
@@ -90,6 +156,10 @@ function onContextMenu(e) {
     :title="`${song.title} — ${song.author}${local ? '\n' + localHint : ''}`"
     @click="onRowClick"
     @contextmenu="onContextMenu"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend.passive="onTouchEnd"
+    @touchcancel.passive="onTouchEnd"
   >
     <span v-if="inSelectMode" class="song-check" @click.stop="toggleSelect(song.bvid)">
       <span class="check-box" :class="{ 'is-checked': checked }">
