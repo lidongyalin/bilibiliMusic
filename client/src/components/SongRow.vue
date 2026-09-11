@@ -10,7 +10,9 @@ import {
 } from '@element-plus/icons-vue'
 import PlaylistPicker from './PlaylistPicker.vue'
 import { state } from '../state.js'
-import { togglePlay } from '../player.js'
+import { togglePlay, isLocalSong } from '../player.js'
+import { currentList } from '../views.js'
+import { songMenu, songHint } from '../menu.js'
 import { isSelected, toggleSelect, addSongsToPlaylist } from '../playlists.js'
 
 const props = defineProps({
@@ -31,6 +33,14 @@ const isPlaying = computed(() => isCurrent.value && state.status === 'playing')
 const isPaused = computed(() => isCurrent.value && state.status === 'paused')
 const checked = computed(() => isSelected(props.song.bvid))
 const inSelectMode = computed(() => state.selectMode)
+const local = computed(() => isLocalSong(props.song))
+
+/** 本地曲目的额外信息：格式 / 大小 / 比特率，替代 B 站那列播放量 */
+const localHint = computed(() => {
+  const s = props.song
+  if (!local.value) return ''
+  return songHint(s)
+})
 
 /**
  * 点击行：多选模式下只切换勾选（不播放）；
@@ -53,6 +63,18 @@ function onRowClick() {
 function onAddToPlaylist(id) {
   void addSongsToPlaylist(id, [props.song])
 }
+
+/** 右键弹出统一上下文菜单（F16）。本地曲目多几个本地相关的动作 */
+function onContextMenu(e) {
+  e.preventDefault()
+  e.stopPropagation()
+  const song = props.song
+  state.contextMenu = {
+    x: e.clientX,
+    y: e.clientY,
+    items: songMenu(e.clientX, e.clientY, song, currentList()),
+  }
+}
 </script>
 
 <template>
@@ -65,8 +87,9 @@ function onAddToPlaylist(id) {
       'is-selected': checked,
       'select-mode': inSelectMode,
     }"
-    :title="`${song.title} — ${song.author}`"
+    :title="`${song.title} — ${song.author}${local ? '\n' + localHint : ''}`"
     @click="onRowClick"
+    @contextmenu="onContextMenu"
   >
     <span v-if="inSelectMode" class="song-check" @click.stop="toggleSelect(song.bvid)">
       <span class="check-box" :class="{ 'is-checked': checked }">
@@ -108,12 +131,16 @@ function onAddToPlaylist(id) {
       <div class="song-title">
         {{ song.title }}
         <span v-if="song.isPay" class="tag-paid">付费</span>
+        <span v-if="local" class="tag-local">本地</span>
+        <span v-if="song.hasMetaOverride" class="tag-edit" title="标签已被本地修改">已改</span>
+        <span v-if="song.broken" class="tag-broken" title="文件已不存在">缺失</span>
       </div>
       <div class="song-author">{{ song.author }}</div>
     </div>
 
     <span class="song-meta">{{ song.duration }}</span>
-    <span class="song-play-count">{{ song.playText }}</span>
+    <span v-if="local" class="song-play-count">{{ localHint }}</span>
+    <span v-else class="song-play-count">{{ song.playText }}</span>
 
     <div class="row-actions" @click.stop>
       <PlaylistPicker v-if="!inSelectMode" :songs="[song]" @command="onAddToPlaylist">

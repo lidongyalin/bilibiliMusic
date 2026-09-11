@@ -3,6 +3,7 @@ import { api } from './api.js'
 import { prefs } from './prefs.js'
 import { state } from './state.js'
 import { switchView } from './navigation.js'
+import { currentList } from './views.js'
 import { clip } from './utils.js'
 
 /**
@@ -171,8 +172,6 @@ export function isSelected(bvid) {
 }
 
 /** 当前视图的曲目集合，作为播放队列的上下文 */
-export function contextOfView(view = state.view) {
-  if (view === 'favorites') return state.favorites
-  if (view === 'playlist') return state.currentPlaylist?.songs || []
-  return state.songs
+export function contextOfView() {
+  return currentList()
 }

@@ -73,7 +73,8 @@ export function createRouter() {
 
   /** 查询收藏状态，批量 */
   router.get('/favorites/check', api(async (req, res) => {
-    const ids = new Set((await favorites.ids()).map(String));
+    // favorites.ids() 返回的是 Set，Set 没有 map，包一层 Array.from
+    const ids = new Set(Array.from(await favorites.ids()).map(String));
     const wanted = String(req.query.ids || '').split(',').filter(Boolean);
     res.json({ favorite: Object.fromEntries(wanted.map((id) => [id, ids.has(id)])) });
   }));

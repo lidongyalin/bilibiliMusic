@@ -8,11 +8,18 @@ import {
   StarFilled,
   VideoPause,
   VideoPlay,
+  AlarmClock,
+  Setting,
+  Sort,
+  FullScreen,
 } from '@element-plus/icons-vue'
 import Svg from './Svg.vue'
 import { state } from '../state.js'
 import { ICON_PATHS, MODE_ICONS, MODE_LABELS, volumeIconPath } from '../icons.js'
-import { cycleMode, next, prev, seekTo, setVolume, toggleMute, togglePlay } from '../player.js'
+import {
+  cycleMode, next, prev, seekTo, setVolume, toggleMute, togglePlay,
+  setSpeed, speedLabel, sleepRemaining, startSleepTimer, SLEEP_OPTIONS,
+} from '../player.js'
 import { toggleLyricPanel } from '../lyrics.js'
 import { isCurrentFaved, toggleFavorite } from '../favorites.js'
 import { formatTime } from '../utils.js'
@@ -73,6 +80,33 @@ watch(
 )
 function onCoverError() {
   coverOk.value = false
+}
+
+// ---------- 附加控制：倍速 / 睡眠定时 / 队列 / 均衡器 / 沉浸 / 设置 ----------
+
+const speedText = computed(() => speedLabel(state.speed))
+const sleepText = computed(() => {
+  const s = sleepRemaining()
+  if (!s) return '睡眠定时'
+  const m = Math.floor(s / 60)
+  const ss = s % 60
+  return `定时 ${m}:${String(ss).padStart(2, '0')}`
+})
+const sleepActive = computed(() => sleepRemaining() > 0)
+const queueCount = computed(() => state.queue.length)
+
+function onSpeedChange(v) {
+  setSpeed(v)
+}
+
+/** 睡眠定时：下拉里选了分钟数就启动，再点一次关闭 */
+function onSleepChange(v) {
+  if (!v || !state.sleepEndsAt) return startSleepTimer(v)
+  if (state.sleepEndsAt) {
+    startSleepTimer(0)
+    return
+  }
+  startSleepTimer(v)
 }
 </script>
 
@@ -185,25 +219,122 @@ function onCoverError() {
       </div>
     </div>
 
-    <div class="volume-row">
-      <button
-        type="button"
-        class="mute-btn"
-        :title="state.muted ? '取消静音' : '静音'"
-        :aria-label="state.muted ? '取消静音' : '静音'"
-        @click="toggleMute"
-      >
-        <Svg :d="volumeIcon" :size="18" />
-      </button>
-      <el-slider
-        :model-value="shownVolume"
-        :min="0"
-        :max="100"
-        :step="1"
-        :show-tooltip="false"
-        aria-label="音量"
-        @input="onVolumeInput"
-      />
+    <div class="right-col">
+      <div class="volume-row">
+        <button
+          type="button"
+          class="mute-btn"
+          :title="state.muted ? '取消静音' : '静音'"
+          :aria-label="state.muted ? '取消静音' : '静音'"
+          @click="toggleMute"
+        >
+          <Svg :d="volumeIcon" :size="18" />
+        </button>
+        <el-slider
+          :model-value="shownVolume"
+          :min="0"
+          :max="100"
+          :step="1"
+          :show-tooltip="false"
+          aria-label="音量"
+          @input="onVolumeInput"
+        />
+      </div>
+
+      <div class="util-row">
+        <el-dropdown trigger="click" @command="onSpeedChange">
+          <button
+            type="button"
+            class="util-btn"
+            :class="{ 'is-active': state.speed !== 1 }"
+            title="倍速播放"
+            aria-label="倍速播放"
+          >
+            {{ speedText }}
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="v in [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]"
+                :key="v"
+                :command="v"
+                :class="{ 'is-active': state.speed === v }"
+              >
+                {{ v === 1 ? '原速' : v + '×' }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
+        <el-dropdown trigger="click" @command="onSleepChange">
+          <button
+            type="button"
+            class="util-btn"
+            :class="{ 'is-active': sleepActive }"
+            :title="sleepActive ? '点击取消定时' : '设置定时停止'"
+            aria-label="睡眠定时"
+          >
+            <el-icon><AlarmClock /></el-icon>
+            <span v-if="sleepActive">{{ sleepText }}</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="m in SLEEP_OPTIONS"
+                :key="m"
+                :command="m"
+              >
+                {{ m >= 60 ? `${m / 60} 小时` : `${m} 分钟` }}后停止
+              </el-dropdown-item>
+              <el-dropdown-item v-if="sleepActive" divided command="0">立即停止</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
+        <button
+          type="button"
+          class="util-btn"
+          :class="{ 'is-active': state.queueOpen }"
+          :title="`播放队列（${queueCount} 首）· 快捷键 Q`"
+          aria-label="播放队列"
+          @click="state.queueOpen = !state.queueOpen"
+        >
+          <el-icon><Sort /></el-icon>
+          <span v-if="queueCount" class="util-count">{{ queueCount }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="util-btn"
+          :class="{ 'is-active': state.eqOpen }"
+          :title="`均衡器${state.masterGain ? `（${state.masterGain > 0 ? '+' : ''}${state.masterGain}dB）` : ''} · 快捷键 E`"
+          aria-label="均衡器"
+          @click="state.eqOpen = !state.eqOpen"
+        >
+          <span class="util-glyph">EQ</span>
+        </button>
+
+        <button
+          type="button"
+          class="util-btn"
+          :class="{ 'is-active': state.immersive }"
+          title="沉浸式播放页（I）"
+          aria-label="沉浸式播放页"
+          @click="state.immersive = !state.immersive"
+        >
+          <el-icon><FullScreen /></el-icon>
+        </button>
+
+        <button
+          type="button"
+          class="util-btn"
+          title="设置（Ctrl+,）"
+          aria-label="设置"
+          @click="state.settingsOpen = true"
+        >
+          <el-icon><Setting /></el-icon>
+        </button>
+      </div>
     </div>
   </footer>
 </template>

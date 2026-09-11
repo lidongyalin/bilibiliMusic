@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import express from 'express';
 import { CONFIG } from './config.js';
 import { createRouter } from './routes.js';
+import { createLocalRouter } from './routes-local.js';
 
 /**
  * 构建 Express 应用本身，但不监听端口。
@@ -15,6 +16,8 @@ export function createApp() {
   // 1mb 覆盖单批 500 首的上限，同时不至于让一个请求占太多内存。
   app.use(express.json({ limit: '1mb' }));
   app.use('/api', createRouter());
+  // 本地曲库 / 历史 / 设置这一组，和 B 站上游无关，单独一个 router
+  app.use('/api', createLocalRouter());
 
   if (existsSync(CONFIG.PUBLIC_DIR)) {
     app.use(express.static(CONFIG.PUBLIC_DIR));

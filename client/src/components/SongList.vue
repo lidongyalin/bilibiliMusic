@@ -8,6 +8,13 @@ import {
   Delete,
   Check,
   Close,
+  Plus,
+  Search,
+  Sort,
+  Download,
+  RefreshRight,
+  CopyDocument,
+  FolderDelete,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import Svg from './Svg.vue'
@@ -17,6 +24,14 @@ import PlaylistDialog from './PlaylistDialog.vue'
 import { state } from '../state.js'
 import { ICON_PATHS, MODE_ICONS } from '../icons.js'
 import { formatDate } from '../utils.js'
+import { currentView, currentList, viewTitle, groupTypeName, isLocalView as isLocalViewOf } from '../views.js'
+import {
+  SORT_OPTIONS, setSort, setLibraryFilter, scanFolder, repairLibrary, removeFolder,
+  findDuplicates, exportM3U, exitDrill, sortedLibrary, listMeta, refreshLibrary,
+  removeSongs,
+} from '../library.js'
+import { openSmart, openHistory, clearHistory, SMART_KINDS, smartKindLabel } from '../history.js'
+import { playlistMenu } from '../menu.js'
 import { loadMore } from '../search.js'
 import { refreshFavorites, toggleFavorite } from '../favorites.js'
 import { playSong, cycleMode } from '../player.js'
@@ -35,34 +50,52 @@ import {
 
 // ---------- 当前视图的数据 ----------
 
+const view = computed(() => currentView())
 const isPlaylistView = computed(() => state.view === 'playlist')
 const isFavoritesView = computed(() => state.view === 'favorites')
 const isSearchView = computed(() => state.view === 'search')
+const isLibraryView = computed(() => ['library', 'group'].includes(view.value))
+const isSmartView = computed(() => view.value === 'smart')
+const isHistoryView = computed(() => view.value === 'history')
+const isLocalView = computed(() => isLocalViewOf())
 
+/** 列表内容。曲库视图额外应用排序与筛选（F12） */
 const list = computed(() => {
-  if (isFavoritesView.value) return state.favorites
-  if (isPlaylistView.value) return state.currentPlaylist?.songs || []
-  return state.songs
+  const base = currentList()
+  if (view.value === 'group') return base
+  if (view.value === 'library') return sortedLibrary()
+  return base
 })
 const rows = computed(() => list.value.map((song, i) => ({ song, index: i + 1 })))
 
 const title = computed(() => {
-  if (isPlaylistView.value) return state.currentPlaylist?.name || '歌单'
-  if (isFavoritesView.value) return '我的收藏'
-  return state.keyword ? `「${state.keyword}」的搜索结果` : '输入关键词开始搜索'
+  if (view.value === 'group') {
+    const d = state.libraryDrill
+    return d ? `${groupTypeName(d.type)}：${d.value}` : '曲库'
+  }
+  return viewTitle()
 })
 
 const meta = computed(() => {
-  if (isPlaylistView.value) return list.value.length ? `共 ${list.value.length} 首` : ''
-  if (isFavoritesView.value) return state.favorites.length ? `共 ${state.favorites.length} 首` : ''
-  return state.keyword && state.total ? `共约 ${state.total} 个结果` : ''
+  if (state.keyword && state.total && isSearchView.value) return `共约 ${state.total} 个结果`
+  // 用筛选/排序后的列表算数量，不然筛选掉一半时标题栏还显示总数
+  return listMeta(list.value)
 })
 
-const showEmpty = computed(() => list.value.length === 0 && !state.loading && !state.playlistDetailLoading)
+const showEmpty = computed(() => {
+  if (list.value.length) return false
+  if (state.loading || state.playlistDetailLoading || state.libraryLoading || state.smartLoading || state.historyLoading) return false
+  return !state.scanProgress?.running
+})
 
 const emptyText = computed(() => {
-  if (isPlaylistView.value) return '这个歌单还是空的，去搜索结果里多选几首再批量加入'
-  if (isFavoritesView.value) return '还没有收藏任何歌曲，点击列表右侧的星标即可收藏'
+  const v = view.value
+  if (v === 'playlist') return '这个歌单还是空的，去搜索结果里多选几首再批量加入'
+  if (v === 'favorites') return '还没有收藏任何歌曲，点击列表右侧的星标即可收藏'
+  if (v === 'library') return state.libraryFolders.length ? '这个筛选条件下没有曲目' : '还没有添加文件夹。点右上角「添加文件夹」开始建库'
+  if (v === 'group') return '这个分组里还没有曲目'
+  if (v === 'smart') return '还没有播放记录，先听几首歌再来'
+  if (v === 'history') return '还没有播放历史'
   return state.keyword ? '没有找到相关歌曲，换个关键词试试' : '搜索任意歌曲开始播放'
 })
 
@@ -96,6 +129,26 @@ async function batchAdd(id) {
   }
 }
 
+/** 播放选中：选中的歌作为播放上下文，播完从队列顺序往下走 */
+function onPlaySelected() {
+  const picks = selectedSongs.value
+  if (!picks.length) return
+  void playSong(picks[0], picks)
+  clearSelection()
+  exitSelectMode()
+}
+
+/** 移出曲库：批量删除选中项（磁盘文件保留） */
+async function onRemoveSelected() {
+  const picks = selectedSongs.value
+  if (!picks.length) return
+  const n = await removeSongs(picks)
+  if (n) {
+    clearSelection()
+    exitSelectMode()
+  }
+}
+
 // ---------- 歌单视图操作 ----------
 
 function onPlay(song) {
@@ -110,6 +163,65 @@ function onRemove(song) {
 async function onPlayAll() {
   if (!list.value.length) return
   void playSong(list.value[0], contextOfView())
+}
+
+// ---------- 曲库工具条（F1 导入 / F12 排序筛选 / F14 导出 / F15 重复 / F28 批量） ----------
+
+/** 选目录。桌面端走原生文件夹选择框，浏览器环境提示用桌面版 */
+async function onAddFolder() {
+  if (window.desktop?.pickDirectory) {
+    const path = await window.desktop.pickDirectory()
+    if (path) void scanFolder(path)
+    return
+  }
+  ElMessage.info('添加文件夹需要桌面版（原生目录选择框）')
+}
+
+async function onRemoveFolder() {
+  if (!state.libraryFolders.length) return
+  const f = state.libraryFolders[0]
+  const ok = window.confirm(`移出「${f.name}」？\n里面的 ${f.songCount} 首会从曲库移除，磁盘文件不删。`)
+  if (ok) await removeFolder(f.id)
+}
+
+// 重复检测弹窗（F15）：dialog 开合由本地 ref 控制，state.duplicates 只存数据
+const dupDialogOpen = ref(false)
+
+async function onDuplicates() {
+  const groups = await findDuplicates()
+  state.duplicates = groups
+  dupDialogOpen.value = true
+}
+
+function closeDuplicates() {
+  dupDialogOpen.value = false
+}
+
+/** 从结果里移除一首，剩下的不足两首就不再算一组 */
+async function onDupRemove(song) {
+  await removeSongs([song])
+  state.duplicates = state.duplicates
+    .map((g) => g.filter((s) => s.bvid !== song.bvid))
+    .filter((g) => g.length > 1)
+  if (!state.duplicates.length) dupDialogOpen.value = false
+}
+
+/** 标题栏右键：整批操作（F17） */
+function onHeaderContext(e) {
+  e.preventDefault()
+  const songs = list.value
+  let kind = 'search'
+  if (state.view === 'playlist') kind = 'playlist'
+  else if (state.view === 'library' || state.view === 'group') kind = 'local'
+  state.contextMenu = { x: e.clientX, y: e.clientY, items: playlistMenu(e.clientX, e.clientY, kind, null, songs) }
+}
+
+function onSort(key) {
+  setSort(key)
+}
+
+function backToLibrary() {
+  exitDrill()
 }
 
 // 重命名弹窗
@@ -281,7 +393,19 @@ watch(
     exitSelectMode()
     if (view === "favorites") void refreshFavorites()
     if (view === "playlist") void refreshPlaylists()
+    if (view === "library") {
+      if (!state.library.length) void refreshLibrary()
+    }
+    if (view === "smart") void openSmart(state.smartKind)
+    if (view === "history") void openHistory()
   }
+)
+
+// 曲库视图下的列表长度变化（扫描完成 / 排序）要重算虚拟滚动窗口
+watch(
+  () => [state.library.length, state.libraryGroupSongs.length, state.smartSongs.length, state.historySongs.length],
+  () => recomputeWindow(),
+  { flush: "post" }
 )
 </script>
 
@@ -299,6 +423,37 @@ watch(
         </button>
       </div>
       <div class="select-bar-right">
+        <button
+          type="button"
+          class="select-bar-action"
+          title="播放选中的曲目"
+          @click="onPlaySelected"
+        >
+          <el-icon><VideoPlay /></el-icon>
+          <span>播放选中</span>
+        </button>
+
+        <template v-if="isLocalView">
+          <button
+            type="button"
+            class="select-bar-action"
+            title="把选中的导出为 m3u"
+            @click="exportM3U(selectedSongs.map((s) => s.bvid))"
+          >
+            <el-icon><Download /></el-icon>
+            <span>导出 m3u</span>
+          </button>
+          <button
+            type="button"
+            class="select-bar-action select-bar-danger"
+            title="从曲库移除选中（不删磁盘文件）"
+            @click="onRemoveSelected"
+          >
+            <el-icon><Delete /></el-icon>
+            <span>移出曲库</span>
+          </button>
+        </template>
+
         <PlaylistPicker :songs="selectedSongs" @command="batchAdd" @create-then-add="onCreateThenAdd">
           <button type="button" class="select-bar-primary">
             <el-icon><Headset /></el-icon>
@@ -340,16 +495,127 @@ watch(
     </div>
 
     <div v-else class="list-header">
-      <h2>{{ title }}</h2>
-      <span class="list-meta">{{ meta }}</span>
+      <!-- 曲库下钻的面包屑 -->
+      <div v-if="view === 'group' && state.libraryDrill" class="lib-crumb">
+        <button type="button" class="crumb-link" @click="backToLibrary">本地曲库</button>
+        <span class="crumb-sep">/</span>
+        <span class="crumb-cur">{{ groupTypeName(state.libraryDrill.type) }}：{{ state.libraryDrill.value }}</span>
+      </div>
 
-      <div class="list-actions">
-        <template v-if="!selectMode">
-          <button type="button" class="header-btn" title="多选并批量加入歌单" @click="toggleSelectMode">
-            <el-icon><Check /></el-icon>
-            <span>多选</span>
+      <div class="list-header-main">
+        <h2 :title="'右键看整批操作'" @contextmenu="onHeaderContext">{{ title }}</h2>
+        <span class="list-meta">{{ meta }}</span>
+
+        <div class="list-actions">
+          <template v-if="!selectMode">
+            <button type="button" class="header-btn" title="播放全部" @click="onPlayAll">
+              <el-icon><VideoPlay /></el-icon>
+            </button>
+            <button type="button" class="header-btn" title="多选并批量操作" @click="toggleSelectMode">
+              <el-icon><Check /></el-icon>
+              <span>多选</span>
+            </button>
+          </template>
+
+          <!-- 曲库专用操作 -->
+          <template v-if="isLibraryView && !selectMode">
+            <button type="button" class="header-btn" title="添加文件夹" @click="onAddFolder">
+              <el-icon><Plus /></el-icon>
+              <span>添加文件夹</span>
+            </button>
+            <button
+              v-if="state.libraryFolders.length"
+              type="button"
+              class="header-btn"
+              :title="`移出「${state.libraryFolders[0].name}」`"
+              @click="onRemoveFolder"
+            >
+              <el-icon><FolderDelete /></el-icon>
+            </button>
+            <button type="button" class="header-btn" title="检查文件是否还在、补进新文件" @click="repairLibrary()">
+              <el-icon><RefreshRight /></el-icon>
+            </button>
+            <button type="button" class="header-btn" title="查找重复曲目" @click="onDuplicates">
+              <el-icon><CopyDocument /></el-icon>
+            </button>
+            <button type="button" class="header-btn" title="导出为 m3u" @click="exportM3U(selectedSongs.length ? selectedSongs.map((s) => s.bvid) : [])">
+              <el-icon><Download /></el-icon>
+            </button>
+          </template>
+
+          <!-- 智能歌单切换 -->
+          <template v-if="isSmartView && !selectMode">
+            <el-dropdown trigger="click" @command="openSmart">
+              <button type="button" class="header-btn" title="切换智能歌单">
+                <el-icon><Sort /></el-icon>
+                <span>{{ smartKindLabel(state.smartKind) }}</span>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-for="k in SMART_KINDS" :key="k.key" :command="k.key">
+                    {{ k.label }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </template>
+
+          <!-- 播放历史：清空 -->
+          <template v-if="isHistoryView && !selectMode && state.historySongs.length">
+            <button type="button" class="header-btn" title="清空播放历史" @click="clearHistory()">
+              <el-icon><Delete /></el-icon>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- 曲库的排序与筛选（F12） -->
+      <div v-if="isLibraryView && !selectMode" class="lib-toolbar">
+        <div class="lib-filter">
+          <el-icon><Search /></el-icon>
+          <input
+            type="text"
+            class="lib-filter-input"
+            placeholder="按歌名 / 歌手 / 专辑 / 路径筛选"
+            :value="state.libraryFilter"
+            @input="state.libraryFilter = $event.target.value"
+          />
+          <button
+            v-if="state.libraryFilter"
+            type="button"
+            class="lib-filter-x"
+            title="清空筛选"
+            @click="setLibraryFilter('')"
+          >
+            <el-icon><Close /></el-icon>
           </button>
-        </template>
+        </div>
+
+        <el-dropdown trigger="click" @command="onSort">
+          <button type="button" class="lib-sort-btn">
+            <span>排序：</span>
+            <span class="lib-sort-cur">{{ (SORT_OPTIONS.find((o) => o.key === state.librarySortKey) || {}).label || '歌名' }}</span>
+            <el-icon><Sort /></el-icon>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="o in SORT_OPTIONS" :key="o.key" :command="o.key">
+                {{ o.label }}
+                <span class="sort-arrow" :class="{ 'is-asc': state.librarySortDir === 'asc' }">
+                  {{ state.librarySortKey === o.key ? (state.librarySortDir === 'asc' ? '↑' : '↓') : '' }}
+                </span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
+        <span v-if="state.scanProgress?.running" class="lib-scan">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>
+            {{ state.scanProgress.phase }}
+            {{ state.scanProgress.total ? `${state.scanProgress.current} / ${state.scanProgress.total}` : '' }}
+          </span>
+        </span>
       </div>
     </div>
 
@@ -407,5 +673,49 @@ watch(
     </div>
 
     <PlaylistDialog v-model="renameVisible" mode="rename" :initial-name="state.currentPlaylist?.name" @confirm="onRenameConfirm" />
+
+    <!-- 重复检测（F15） -->
+    <el-dialog
+      :model-value="dupDialogOpen"
+      width="680px"
+      :close-on-click-modal="false"
+      class="dup-dialog"
+      @close="closeDuplicates"
+    >
+      <template #header>
+        <div class="dup-head">
+          <h3>疑似重复曲目</h3>
+          <span v-if="state.duplicates.length" class="dup-count">
+            {{ state.duplicates.length }} 组 ·
+            {{ state.duplicates.reduce((n, g) => n + g.length, 0) }} 首
+          </span>
+        </div>
+      </template>
+
+      <div v-if="state.duplicates.length" class="dup-groups">
+        <div v-for="(g, gi) in state.duplicates" :key="gi" class="dup-group">
+          <p v-if="g.length > 1" class="dup-hint">这 {{ g.length }} 首相同：歌名、歌手、时长一致</p>
+          <div v-for="s in g" :key="s.bvid" class="dup-row">
+            <img v-if="s.cover" :src="s.cover" class="dup-cover" alt="">
+            <span v-else class="dup-cover dup-cover-empty">♪</span>
+            <div class="dup-info">
+              <div class="dup-title">{{ s.title }}</div>
+              <div class="dup-author">
+                {{ s.author }} · {{ s.duration }} · {{ s.format || '' }}{{ s.sizeText ? ` · ${s.sizeText}` : '' }}
+              </div>
+              <div class="dup-path" :title="s.path">{{ s.path }}</div>
+            </div>
+            <button type="button" class="dup-remove" title="从曲库移除这一首（不删磁盘文件）" @click="onDupRemove(s)">
+              <el-icon><Delete /></el-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+      <el-empty v-else description="没有发现重复曲目" :image-size="72" />
+
+      <template #footer>
+        <button type="button" class="st-close" @click="closeDuplicates">关闭</button>
+      </template>
+    </el-dialog>
   </div>
 </template>

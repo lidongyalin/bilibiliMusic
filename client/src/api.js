@@ -124,8 +124,153 @@ export const api = {
   /**
    * 音频地址由后端解析并代理，前端从不接触 CDN 原始地址——
    * 既避免 CORS 拦截，也让地址过期时能由后端重新解析。
+   *
+   * 本地曲库的曲目 bvid 形如 `local-<id>`，走本地文件流而不是 B 站音轨。
    */
   streamUrl(bvid) {
-    return `/api/stream/${encodeURIComponent(bvid)}`
+    const id = String(bvid || '')
+    if (id.startsWith('local-')) return `/api/local/stream/${encodeURIComponent(id.slice(6))}`
+    return `/api/stream/${encodeURIComponent(id)}`
+  },
+
+  // ---------- 本地曲库 ----------
+
+  listLibrary() {
+    return request('/api/library')
+  },
+
+  scanProgress() {
+    return request('/api/library/progress')
+  },
+
+  /** 扫描文件夹。浏览器里 path 由 Electron 的目录选择框给出 */
+  addFolder(path) {
+    return request('/api/library/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    })
+  },
+
+  removeFolder(id) {
+    return request(`/api/library/folders/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  repairLibrary() {
+    return request('/api/library/repair', { method: 'POST', body: '{}' })
+  },
+
+  libraryGroups(type) {
+    return request(`/api/library/groups?type=${encodeURIComponent(type)}`)
+  },
+
+  libraryGroupSongs(type, key) {
+    const q = new URLSearchParams({ type: String(type || ''), key: String(key || '') })
+    return request(`/api/library/group?${q}`)
+  },
+
+  libraryDuplicates() {
+    return request('/api/library/duplicates')
+  },
+
+  getLibrarySong(id) {
+    return request(`/api/library/${encodeURIComponent(id)}`)
+  },
+
+  /** 编辑本地元数据覆盖 */
+  updateLibraryMeta(id, patch) {
+    return request(`/api/library/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+  },
+
+  clearLibraryMeta(id) {
+    return request(`/api/library/${encodeURIComponent(id)}/override`, { method: 'DELETE' })
+  },
+
+  removeLibrarySongs(ids) {
+    return request('/api/library/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+  },
+
+  /** 本地歌词：同目录的 .lrc / .txt。后端只读一次不落盘 */
+  localLrc(id) {
+    return request(`/api/local/lrc/${encodeURIComponent(id)}`)
+  },
+
+  // ---------- m3u 导入导出 ----------
+
+  m3uExportUrl(ids) {
+    if (!Array.isArray(ids) || !ids.length) return '/api/library/export-m3u'
+    return `/api/library/export-m3u?ids=${ids.map(encodeURIComponent).join(',')}`
+  },
+
+  m3uImportPath(path) {
+    return request('/api/library/import-m3u', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    })
+  },
+
+  // ---------- 播放历史 / 智能歌单 ----------
+
+  listHistory(limit = 200) {
+    return request(`/api/history?limit=${encodeURIComponent(limit)}`)
+  },
+
+  /** 曲目开始播放时上报一次 */
+  recordPlay(song) {
+    if (!song || !song.bvid) return Promise.resolve(null)
+    return request('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bvid: song.bvid,
+        title: song.title || '',
+        author: song.author || '',
+        album: song.album || '',
+        cover: song.cover || '',
+        durationSec: Number(song.durationSec) || 0,
+        source: song.source || 'remote',
+      }),
+    }).catch(() => null)
+  },
+
+  deleteHistory(id) {
+    return request(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  clearHistory() {
+    return request('/api/history', { method: 'DELETE' })
+  },
+
+  mostPlayed(limit = 100) {
+    return request(`/api/history/most-played?limit=${encodeURIComponent(limit)}`)
+  },
+
+  /** kind: recently-added | most-played | recently-played */
+  smartSongs(kind, limit = 300) {
+    const q = new URLSearchParams({ kind: String(kind || ''), limit: String(limit) })
+    return request(`/api/smart?${q}`)
+  },
+
+  // ---------- 设置 ----------
+
+  getSettings() {
+    return request('/api/settings')
+  },
+
+  updateSettings(patch) {
+    return request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
   },
 }

@@ -26,6 +26,9 @@ function write(key, value) {
 }
 
 const MODES = ['list', 'single', 'shuffle']
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+const SMART_KINDS = ['recently-added', 'most-played', 'recently-played']
+const SORT_KEYS = ['title', 'author', 'album', 'durationSec', 'addedAt', 'year', 'bitrate']
 
 export const prefs = {
   getVolume() {
@@ -109,4 +112,88 @@ export const prefs = {
     delete all[bvid]
     write('positions', all)
   },
+
+  // ---------- 倍速 ----------
+  // 允许的值固定这几档，避免存进 1.37 这种没意义的数字
+  getSpeed() {
+    const v = Number(read('speed', 1))
+    return SPEEDS.includes(v) ? v : 1
+  },
+  setSpeed(v) { write('speed', v) },
+
+  // ---------- 均衡器 / 增益 / 声道平衡 ----------
+  // 存的是九段 dB 数组，不是歌词之类的版权内容，可以落盘
+  getEq() {
+    const v = read('eq', [])
+    return Array.isArray(v) ? v : []
+  },
+  setEq(v) { write('eq', v) },
+
+  getGain() {
+    const v = Number(read('gain', 0))
+    return Number.isFinite(v) ? Math.max(-15, Math.min(15, v)) : 0
+  },
+  setGain(v) { write('gain', v) },
+
+  getBalance() {
+    const v = Number(read('balance', 0))
+    return Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0
+  },
+  setBalance(v) { write('balance', v) },
+
+  // ---------- 智能歌单 / 排序 ----------
+  getSmartKind() {
+    const k = read('smartKind', 'recently-added')
+    return SMART_KINDS.includes(k) ? k : 'recently-added'
+  },
+  setSmartKind(k) { write('smartKind', k) },
+
+  getSortKey() {
+    const k = read('sortKey', 'title')
+    return SORT_KEYS.includes(k) ? k : 'title'
+  },
+  setSortKey(k) { write('sortKey', k) },
+
+  getSortDir() {
+    const d = read('sortDir', 'asc')
+    return d === 'desc' ? 'desc' : 'asc'
+  },
+  setSortDir(d) { write('sortDir', d) },
+
+  // ---------- 主题 ----------
+  // light / dark / system（跟随系统）
+  getTheme() {
+    const t = read('theme', 'dark')
+    return ['light', 'dark', 'system'].includes(t) ? t : 'dark'
+  },
+  setTheme(t) { write('theme', t) },
+
+  // 默认强调色跟 base.css 的 :root 保持一致（网易云红）；
+  // 写别的值会让第一次启动时先闪一下另一种颜色
+  getAccent() { return read('accent', '#ec4141') },
+  setAccent(c) { write('accent', c) },
+
+  // ---------- 歌词偏移 ----------
+  // 只存「偏移秒数」，按 bvid 记录；歌词文本一律不落盘
+  // 保留到 0.1 秒：步进是 0.5 秒，但用户拖过之后可能有半格的残值
+  getLyricOffset(bvid) {
+    const v = read('lyricOffsets', {})[bvid]
+    return Number.isFinite(v) ? Math.round(v * 10) / 10 : 0
+  },
+  setLyricOffset(bvid, sec) {
+    const all = read('lyricOffsets', {})
+    if (!bvid) return
+    const rounded = Math.round(sec * 10) / 10
+    if (!rounded) delete all[bvid]
+    else all[bvid] = rounded
+    write('lyricOffsets', all)
+  },
+
+  // ---------- 播放模式：随机/顺序之外还有「是否开启无缝播放」 ----------
+  getGapless() { return Boolean(read('gapless', true)) },
+  setGapless(v) { write('gapless', Boolean(v)) },
+
+  // 睡眠定时：只记上次选的分钟数，方便下次快速复用；运行中的定时不落盘
+  getSleepMinutes() { return Number(read('sleepMinutes', 0)) || 0 },
+  setSleepMinutes(v) { write('sleepMinutes', v) },
 }

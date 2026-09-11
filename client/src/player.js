@@ -4,6 +4,7 @@ import { prefs } from './prefs.js'
 import { state } from './state.js'
 import { MODE_LABELS } from './icons.js'
 import { clip } from './utils.js'
+import { attach as attachEngine, resume as resumeEngine, applyEq, setMasterGain, setBalance } from './audio-engine.js'
 
 /**
  * 播放控制器。用 new Audio() 而不是 DOM 里的 <audio>，
@@ -23,12 +24,27 @@ let retryTimer = 0
 const MAX_CONSECUTIVE_FAILURES = 3
 const RETRY_DELAY_MS = 1200
 
+// 睡眠定时的计时器句柄（淡出参数在下面的「睡眠定时」小节里）
+let sleepTimer = 0
+
+// 无缝播放：提前用第二个 Audio 元素把下一首的请求发出去，
+// 真正切换时数据已经在浏览器缓存里，交接空档从「一次网络往返」缩到「一次解码」
+let preloaded = null
+
 function getAudio() {
   if (!audio) {
     audio = new Audio()
     audio.preload = 'metadata'
     audio.volume = state.volume
     audio.muted = state.muted
+    // 接均衡器/增益/声道平衡这条链。不支持 Web Audio 的环境返回 false，
+    // 此时 <audio> 保持直连播放，声音不受影响。
+    attachEngine(audio)
+    // 恢复上次保存的音效：链刚建好时所有 gain 都是 0，不补一次就会
+    // 出现「打开面板调了 EQ，第一次播放却听不出来」
+    applyEq(state.eq)
+    setMasterGain(state.masterGain)
+    setBalance(state.balance)
     bindEvents()
     bindMediaSession()
   }
@@ -55,6 +71,9 @@ function bindEvents() {
   a.addEventListener('timeupdate', () => {
     state.progress = a.currentTime
     scheduleSave()
+    tickSleepTimer()
+    // 离结尾 30 秒时开始预取下一首，让交接尽量无感
+    if (state.duration - a.currentTime < 30) preloadNext()
   })
 
   a.addEventListener('playing', () => {
@@ -62,6 +81,8 @@ function bindEvents() {
     setPlaybackState('playing')
     clearErrorFlag()
     resetFailureState()
+    // AudioContext 可能在非手势里创建后被挂起，出声前再试一次恢复
+    void resumeEngine()
   })
 
   a.addEventListener('waiting', () => {
@@ -239,10 +260,15 @@ export async function playAt(index) {
   clearErrorFlag()
 
   const a = getAudio()
+  applySpeed(a)
   try { a.currentTime = 0 } catch { /* ignore */ }
   a.src = api.streamUrl(song.bvid)
   a.load()
   updateMetadata()
+
+  // 上报播放历史（智能歌单靠它算「最近播放 / 最常播放」）。
+  // 失败静默——历史记录不应该影响播放
+  void api.recordPlay(song)
 
   try {
     await a.play()
@@ -255,6 +281,7 @@ export async function playAt(index) {
     }
   }
   setPlaybackState('paused')
+  preloadNext()
 }
 
 export async function togglePlay() {
@@ -339,6 +366,260 @@ export function toggleMute() {
   state.muted = !state.muted
   const a = getAudio()
   a.muted = state.muted
+}
+
+// ---------- 倍速 ----------
+
+/** 允许的倍速档位 */
+export const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+function applySpeed(a) {
+  if (a) a.playbackRate = state.speed
+}
+
+/** 设置倍速。非法值回落 1.0，不报错——调用方一般来自下拉选择 */
+export function setSpeed(v) {
+  const n = Number(v)
+  state.speed = SPEED_OPTIONS.includes(n) ? n : 1
+  prefs.setSpeed(state.speed)
+  applySpeed(getAudio())
+  return state.speed
+}
+
+/** 上一档 / 下一档。返回 -1 / 0 / 1 表示方向，0 是到头了 */
+export function stepSpeed(dir = 1) {
+  const i = SPEED_OPTIONS.indexOf(state.speed)
+  const next = Math.max(0, Math.min(SPEED_OPTIONS.length - 1, (i < 0 ? 2 : i) + dir))
+  setSpeed(SPEED_OPTIONS[next])
+  return next === i ? 0 : dir
+}
+
+/** 倍速展示文案：1 显示「原速」 */
+export function speedLabel(v = state.speed) {
+  return Number(v) === 1 ? '原速' : `${v}×`
+}
+
+// ---------- 播放队列 ----------
+
+/** 本地曲库曲目。bvid 是 local-<id>，和 B 站 vid 走不同的代理路由 */
+export function isLocalSong(song) {
+  return String(song?.bvid || '').startsWith('local-')
+}
+
+function dedupe(songs, extra) {
+  const have = new Set(state.queue.map((s) => s.bvid))
+  for (const s of Array.isArray(extra) ? extra : []) if (s?.bvid) have.add(s.bvid)
+  return songs.filter((s) => s?.bvid && !have.has(s.bvid))
+}
+
+/** 追加到队列末尾，不去播放 */
+export function addToQueue(songs) {
+  const add = dedupe(Array.isArray(songs) ? songs : [])
+  if (!add.length) return 0
+  state.queue = [...state.queue, ...add]
+  return add.length
+}
+
+/** 插到当前曲目的后面。传多首时保持相对顺序 */
+export function playNext(songs) {
+  const add = dedupe(Array.isArray(songs) ? songs : [])
+  if (!add.length) return 0
+  const at = Math.min(state.queueIndex + 1, state.queue.length)
+  state.queue = [...state.queue.slice(0, at), ...add, ...state.queue.slice(at)]
+  return add.length
+}
+
+/** 从队列移除一首（用 bvid）。当前曲目被移除时自动接上邻居 */
+export function removeFromQueue(bvid) {
+  const i = state.queue.findIndex((s) => s.bvid === bvid)
+  if (i < 0) return false
+  const cur = state.current
+  state.queue = state.queue.filter((s) => s.bvid !== bvid)
+  if (cur && cur.bvid === bvid) {
+    if (!state.queue.length) {
+      state.queueIndex = -1
+      state.current = null
+      state.status = 'idle'
+      state.progress = 0
+      state.duration = 0
+      try { if (audio) { audio.pause(); audio.removeAttribute('src') } } catch { /* ignore */ }
+    } else {
+      void playAt(Math.min(i, state.queue.length - 1))
+    }
+  } else if (i < state.queueIndex) {
+    state.queueIndex -= 1
+  }
+  return true
+}
+
+/** 清空队列，保留当前曲目 */
+export function clearQueue() {
+  if (!state.current) {
+    state.queue = []
+    state.queueIndex = -1
+    return
+  }
+  state.queue = [state.current]
+  state.queueIndex = 0
+}
+
+/** 拖动重排：把 from 位置的曲目移到 to 位置 */
+export function moveInQueue(from, to) {
+  if (from === to) return
+  if (from < 0 || from >= state.queue.length || to < 0 || to >= state.queue.length) return
+  const next = state.queue.slice()
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  state.queue = next
+  const cur = state.current
+  if (cur) {
+    const ni = next.findIndex((s) => s.bvid === cur.bvid)
+    if (ni >= 0) state.queueIndex = ni
+  }
+}
+
+/** 当前队列里第 index 首的歌 */
+export function queueSong(index) {
+  return state.queue[index] || null
+}
+
+// ---------- 睡眠定时 ----------
+
+/** 可选的定时档位（分钟）。0 表示「立即停止」，不进这个列表 */
+export const SLEEP_OPTIONS = [15, 30, 45, 60, 90, 120]
+
+/** 到点前先淡出多少秒：硬切太突兀 */
+const SLEEP_FADE_SEC = 20
+const FLOOR_VOL = 0.01
+/** 淡出起点：0 表示还没开始淡出 */
+let fadeStart = 0
+/** 淡出开始时的音量，之后按比例往地板压 */
+let fadeFrom = 0.8
+
+/** 当前剩余秒数 */
+export function sleepRemaining() {
+  return Math.max(0, Math.ceil((state.sleepEndsAt - Date.now()) / 1000))
+}
+
+/** 设置睡眠定时。传 0 关闭 */
+export function startSleepTimer(minutes) {
+  const n = Math.round(Number(minutes) || 0)
+  if (n <= 0) return cancelSleepTimer()
+  state.sleepEndsAt = Date.now() + n * 60000
+  state.sleepCountdown = sleepRemaining()
+  prefs.setSleepMinutes(n)
+  if (!sleepTimer) sleepTimer = setInterval(tickSleepTimer, 250)
+  return true
+}
+
+export function cancelSleepTimer() {
+  state.sleepEndsAt = 0
+  state.sleepCountdown = 0
+  fadeStart = 0
+  if (sleepTimer) {
+    clearInterval(sleepTimer)
+    sleepTimer = 0
+  }
+}
+
+/**
+ * 每 tick 检查一次。到点后不是立刻静音，而是把音量从当时的值线性压到地板再暂停——
+ * 直接在副歌里硬切太突兀。
+ *
+ * 暂停状态下也照常推进：用户中途暂停定时不该失效。
+ */
+function tickSleepTimer() {
+  if (!state.sleepEndsAt) return
+  const remain = sleepRemaining()
+  state.sleepCountdown = remain
+  if (remain > 0) return
+
+  const a = audio
+  if (!a) return cancelSleepTimer()
+  if (!fadeStart) {
+    fadeStart = Date.now()
+    fadeFrom = state.volume || 0.8
+  }
+  const t = Math.min(1, (Date.now() - fadeStart) / (SLEEP_FADE_SEC * 1000))
+  a.volume = Math.max(FLOOR_VOL, fadeFrom * (1 - t))
+  if (t >= 1) {
+    const m = state.sleepEndsAt
+    cancelSleepTimer()
+    a.pause()
+    state.status = 'paused'
+    setPlaybackState('paused')
+    ElMessage({ message: '睡眠定时已到，播放已停止', type: 'success', duration: 2400 })
+  }
+}
+
+// ---------- 均衡器 / 增益 / 声道平衡 ----------
+
+/** 应用九段 EQ（dB 数组）。返回规整后的值 */
+export function setEq(gains) {
+  state.eq = applyEq(gains)
+  prefs.setEq(state.eq)
+  return state.eq
+}
+
+/** 总增益（dB），对应「音量均衡/增益」 */
+export function setGain(db) {
+  state.masterGain = setMasterGain(db)
+  prefs.setGain(state.masterGain)
+  return state.masterGain
+}
+
+/** 声道平衡：-1 全左 / 0 居中 / 1 全右 */
+export function setBalanceValue(v) {
+  state.balance = setBalance(v)
+  prefs.setBalance(state.balance)
+  return state.balance
+}
+
+/** EQ 与增益全部归零 */
+export function resetAudioFx() {
+  setEq([0, 0, 0, 0, 0, 0, 0, 0, 0])
+  setGain(0)
+  setBalanceValue(0)
+}
+
+export function setGapless(v) {
+  state.gapless = Boolean(v)
+  prefs.setGapless(state.gapless)
+  if (!state.gapless) discardPreload()
+}
+
+/** 无缝播放：提前把下一首的请求发出去 */
+function preloadNext() {
+  if (!state.gapless || state.mode === 'single') return
+  if (state.queue.length < 2 || !audio) return
+  const idx = (state.queueIndex + 1) % state.queue.length
+  const song = state.queue[idx]
+  if (!song || song.bvid === state.current?.bvid) return
+  if (preloaded && preloaded.bvid === song.bvid) return
+
+  discardPreload()
+  try {
+    const el = new Audio()
+    el.preload = 'auto'
+    el.src = api.streamUrl(song.bvid)
+    el.addEventListener('loadedmetadata', () => { el.pause() }, { once: true })
+    // 只发请求、不解析整个文件：abort 掉解码，保留 HTTP 缓存
+    el.addEventListener('error', () => discardPreload(), { once: true })
+    el.load()
+    preloaded = { el, bvid: song.bvid }
+  } catch {
+    preloaded = null
+  }
+}
+
+function discardPreload() {
+  if (!preloaded) return
+  try {
+    preloaded.el.pause()
+    preloaded.el.removeAttribute('src')
+    preloaded.el.load()
+  } catch { /* ignore */ }
+  preloaded = null
 }
 
 export function cycleMode() {

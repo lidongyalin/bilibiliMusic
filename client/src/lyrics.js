@@ -1,13 +1,17 @@
 import { ElMessage } from 'element-plus'
 import { api } from './api.js'
+import { parseLrcText } from './lyric-lines.js'
 import { prefs } from './prefs.js'
 import { state } from './state.js'
 
 /**
- * 歌词加载。按当前播放的曲名向后端取，后端会用网易云公开接口匹配最接近的一首。
+ * 歌词加载。
+ *
+ * 本地歌曲优先读同目录的 .lrc——用户自己带的时间戳比在线匹配准得多，
+ * 也没有歌词版权争议（文件本来就是用户自己的）。找不到才退回在线匹配。
  *
  * 歌词只在内存里（state.lyrics），不写 localStorage、不写文件——它是版权内容，
- * 本应用只供个人本地播放。
+ * 本应用只供个人本地播放。偏移量是用户校准出的数字，按 bvid 持久化。
  *
  * 切歌很快时请求会乱序回来，所以用自增序号丢弃过期响应。
  */
@@ -19,15 +23,43 @@ export function clearLyrics() {
   state.lyricStatus = 'idle'
 }
 
+function isLocalSong(song) {
+  return typeof song?.bvid === 'string' && song.bvid.startsWith('local-')
+}
+
+/** 切换歌曲时把该歌的校准偏移取出来；没有校准过就是 0 */
+export function loadOffsetFor(song) {
+  state.lyricOffset = song && song.bvid ? prefs.getLyricOffset(song.bvid) : 0
+  return state.lyricOffset
+}
+
 export async function loadLyrics(song) {
   seq += 1
   const mine = seq
 
   clearLyrics()
+  loadOffsetFor(song)
   if (!song || !song.title) return
 
   state.lyricStatus = 'loading'
   try {
+    if (isLocalSong(song)) {
+      // 没带 .lrc 时后端返回 { found: false }，继续走在线匹配
+      try {
+        const lrc = await api.localLrc(song.bvid)
+        if (mine !== seq) return
+        const lines = parseLrcText(lrc && lrc.text)
+        if (lines.length) {
+          state.lyrics = lines
+          state.lyricMatch = { source: '本地文件', name: lrc.file || '', local: true }
+          state.lyricStatus = 'ok'
+          return
+        }
+      } catch {
+        if (mine !== seq) return
+      }
+    }
+
     const res = await api.lyrics(song.title, song.author || '', song.durationSec || 0)
     if (mine !== seq) return // 期间又切了歌，这份结果不要了
     const lines = Array.isArray(res.lines) ? res.lines : []

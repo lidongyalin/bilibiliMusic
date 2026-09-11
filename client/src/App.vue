@@ -5,11 +5,23 @@ import SongList from './components/SongList.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import LyricPanel from './components/LyricPanel.vue'
 import PlaylistDialog from './components/PlaylistDialog.vue'
+import ContextMenu from './components/ContextMenu.vue'
+import QueuePanel from './components/QueuePanel.vue'
+import EqualizerPanel from './components/EqualizerPanel.vue'
+import MetaEditor from './components/MetaEditor.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
+import Immersive from './components/Immersive.vue'
 import { refreshFavorites } from './favorites.js'
 import { bindKeyboard } from './keyboard.js'
+import { initTheme } from './theme.js'
 import { loadLyrics } from './lyrics.js'
 import { state } from './state.js'
 import { openPlaylist, refreshPlaylists, createPlaylist, addSongsToPlaylist } from './playlists.js'
+import { refreshLibrary } from './library.js'
+import { openSmart, openHistory } from './history.js'
+
+// 主题要在第一次绘制前生效，否则深色主题的应用会先闪一下浅色
+initTheme()
 
 // 切歌即取歌词。播放条常驻可见，所以面板开着时歌词会一直跟着更新
 watch(
@@ -64,6 +76,11 @@ onMounted(() => {
   if (state.view === 'playlist' && state.currentPlaylistId) {
     void openPlaylist(state.currentPlaylistId)
   }
+  // 启动时落在本地曲库 / 智能歌单 / 播放历史，也要把数据补上
+  // （SongList 里的 watch 不带 immediate，冷启动那一次不会触发）
+  if (state.view === 'library' && !state.library.length) void refreshLibrary()
+  if (state.view === 'smart') void openSmart(state.smartKind)
+  if (state.view === 'history') void openHistory()
   syncBarHeight()
   window.addEventListener('resize', syncBarHeight)
   window.addEventListener('create-playlist-and-add', onCreateAndAdd)
@@ -85,5 +102,13 @@ onBeforeUnmount(() => {
     <LyricPanel />
 
     <PlaylistDialog v-model="createVisible" mode="create" @confirm="onCreateConfirm" />
+
+    <!-- 浮层：全部 Teleport 到 body，跟着 state 开关 -->
+    <ContextMenu />
+    <QueuePanel />
+    <EqualizerPanel />
+    <MetaEditor />
+    <SettingsDialog />
+    <Immersive />
   </div>
 </template>
