@@ -68,16 +68,19 @@ export const state = reactive({
   // 队列面板
   queueOpen: false,
 
-  // 睡眠定时：sleepEndsAt 是计划停止的时间戳，sleepCountdown 是剩余秒数
+  // 睡眠定时：sleepEndsAt 是计划停止的时间戳，sleepCountdown 是剩余秒数。
+  // sleepAfterCurrent 是另一种定时——不按时间，播完当前这首就停
   sleepEndsAt: 0,
   sleepCountdown: 0,
+  sleepAfterCurrent: false,
 
-  // 音量处理：EQ 九段、总增益（dB）、声道平衡
+  // 音量处理：EQ 九段、总增益（dB）、声道平衡、音量均衡（学习式响度归一）
   eq: prefs.getEq().length === EQ_BANDS.length
     ? prefs.getEq().slice()
     : EQ_PRESETS.flat.slice(),
   masterGain: prefs.getGain(),
   balance: prefs.getBalance(),
+  normEnabled: prefs.getNormEnabled(),
   eqOpen: false,
 
   // 播放条显示
@@ -109,6 +112,8 @@ export const state = reactive({
 
   // 标签编辑弹窗（F10）：null 表示没打开
   metaEditor: null,     // { song }
+  // 批量标签编辑（F28）：null 表示没打开，打开时 { count }
+  metaBatch: null,
 
   // 重复检测结果（F15）
   duplicates: [],

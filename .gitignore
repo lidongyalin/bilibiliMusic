@@ -66,3 +66,6 @@ src/util/.image-cache.json
 *.out
 
 .merkle-snapshot.json
+# 性能基准临时数据
+.perf-music/
+.perf-data/

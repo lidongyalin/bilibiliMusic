@@ -198,6 +198,15 @@ export const api = {
     })
   },
 
+  /** 批量修正本地元数据覆盖（F28）。一次请求写一批，比循环单首快得多 */
+  updateLibraryMetaBatch(ids, patch) {
+    return request('/api/library/meta-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, patch }),
+    })
+  },
+
   /** 本地歌词：同目录的 .lrc / .txt。后端只读一次不落盘 */
   localLrc(id) {
     return request(`/api/local/lrc/${encodeURIComponent(id)}`)

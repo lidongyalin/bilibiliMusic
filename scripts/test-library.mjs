@@ -93,6 +93,46 @@ try {
     ok('未知曲目返回 null', await library.updateMeta('nope', { title: 'x' }) === null);
   }
 
+  console.log('\n批量元数据（F28）');
+  {
+    const all = await library.list();
+    const picks = all.songs.slice(0, 3);
+    const ids = picks.map((s) => s.localId);
+
+    const res = await library.updateMetaBatch(ids, { genre: '流行', albumArtist: '群星' });
+    ok('全部更新', res.updated === picks.length, `got ${res.updated}`);
+    ok('无缺失', res.missing === 0, `got ${res.missing}`);
+    const after = await library.list();
+    ok('流派写进覆盖', after.songs.slice(0, 3).every((s) => s.genre === '流行'));
+    ok('标记 hasMetaOverride', after.songs.slice(0, 3).every((s) => s.hasMetaOverride === true));
+
+    // 与原标签相同的值不应留下覆盖。用一首还没被这批用例碰过的歌验证，
+    // picks[0..2] 此时已带着上一条的 genre 覆盖，hasMetaOverride 必然是 true
+    const one = all.songs[3];
+    if (one) {
+      await library.updateMetaBatch([one.localId], { artist: one.author });
+      const oneAfter = (await library.list()).songs.find((s) => s.localId === one.localId);
+      ok('填回原值不算修改', oneAfter.hasMetaOverride === false, `author=${oneAfter.author}`);
+    }
+
+    // 与原值相同的字段不覆盖，其他字段仍然写
+    const r2 = await library.updateMetaBatch(ids, { artist: '不存在的歌手', album: '合集' });
+    ok('混合更新成功', r2.updated === picks.length);
+    const after2 = await library.list();
+    ok('专辑已批量写入', after2.songs.slice(0, 3).every((s) => s.album === '合集'));
+
+    // 空 patch 直接跳过
+    const r3 = await library.updateMetaBatch(ids, {});
+    ok('空 patch skipped', r3.skipped === true && r3.updated === 0);
+
+    // 含未知 id：updated 只算存在的
+    const r4 = await library.updateMetaBatch([...ids, 'nope'], { genre: '摇滚' });
+    ok('缺失计数', r4.updated === picks.length && r4.missing === 1, `updated=${r4.updated} missing=${r4.missing}`);
+
+    // 清理，免得影响后面的用例
+    for (const s of after2.songs.slice(0, 3)) await library.clearOverrides(s.localId);
+  }
+
   console.log('\n重复检测');
   {
     // 复制一份文件：标题 + 歌手 + 时长一致

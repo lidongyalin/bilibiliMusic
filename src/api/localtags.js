@@ -294,7 +294,10 @@ function scanMP3(buf, start) {
     if (!sr || !br) { off += 1; bad += 1; if (bad > 300) break; continue; }
 
     const samplesPerFrame = MP3_SAMPLES_PER_FRAME[ver] || 1152;
-    const bitsPerFrame = (ver === 3 ? 144000 : 72000) * br * 1000;
+    // MPEG1 Layer3 每帧 1152 采样 → 144*kbps*1000/sr 字节；MPEG2/2.5 是 576 采样 → 72。
+    // 之前写成 144000/72000，帧长大 1000 倍：没有 Xing 头的 MP3 一整首只会
+    // 走到几帧，时长被算成 0.2 秒这种量级，排序 / 重复检测 / 智能歌单全跟着错
+    const bitsPerFrame = (ver === 3 ? 144 : 72) * br * 1000;
     const frameLen = Math.floor(bitsPerFrame / sr) + padding;
     if (frameLen < 4) { off += 1; bad += 1; if (bad > 300) break; continue; }
 

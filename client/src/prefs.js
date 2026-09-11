@@ -151,6 +151,17 @@ export const prefs = {
   },
   setBalance(v) { write('balance', v) },
 
+  // ---------- 音量均衡（F26）：学习式响度归一 ----------
+  // 只存「开关」和「每首的 RMS 数字」，不存音频也不存歌词
+  getNormEnabled() { return Boolean(read('normEnabled', false)) },
+  setNormEnabled(v) { write('normEnabled', Boolean(v)) },
+
+  getLoudnessMap() {
+    const m = read('loudnessMap', {})
+    return m && typeof m === 'object' ? m : {}
+  },
+  setLoudnessMap(m) { write('loudnessMap', m && typeof m === 'object' ? m : {}) },
+
   // ---------- 智能歌单 / 排序 ----------
   getSmartKind() {
     const k = read('smartKind', 'recently-added')

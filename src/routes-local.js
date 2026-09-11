@@ -186,6 +186,20 @@ export function createLocalRouter() {
     res.json({ ok: true, ...(await library.removeSongs(body.ids)) });
   }));
 
+  /**
+   * 批量修正元数据（F28，写本地覆盖层，不改原文件标签）。body: { ids, patch }。
+   * patch 只认 artist / album / albumArtist / year / genre，留空的字段不动；
+   * title 不允许批量改。声明在 /library/:id 之后没关系，路径多一段不会被吃掉。
+   */
+  router.post('/library/meta-batch', api(async (req, res) => {
+    const body = req.body || {};
+    if (!Array.isArray(body.ids) || !body.ids.length) {
+      res.status(400).json({ error: '请至少选择一首歌' });
+      return;
+    }
+    res.json({ ok: true, ...(await library.updateMetaBatch(body.ids, body.patch || {})) });
+  }));
+
   // ---------- 本地文件 ----------
 
   /** 本地音频流，支持 Range */

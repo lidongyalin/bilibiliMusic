@@ -1,9 +1,9 @@
 /**
- * Web Audio 处理链：均衡器 + 增益 + 声道平衡 + 频谱分析。
+ * Web Audio 处理链：均衡器 + 增益 + 音量均衡 + 声道平衡 + 频谱分析。
  *
  * 图结构：
- *   <audio> ── MediaElementSource ── [EQ 9 段] ── masterGain ── panner ── destination
- *                                └─────────────────────────────── analyser（旁路，只监听）
+ *   <audio> ── MediaElementSource ── [EQ 9 段] ── masterGain ── normGain ── panner ── destination
+ *                                └──────────────────────────────────────────── analyser（旁路，只监听）
  *
  * 几个必须小心的点：
  *
@@ -17,6 +17,9 @@
  *
  * 3. AudioContext 在非用户手势里创建会被静音锁住（autoplay policy），
  *    需要拿到点击事件时再 resume()。
+ *
+ * 4. analyser 挂在 source（EQ 之前），量到的是文件本身的响度，
+ *    不被用户自己的 EQ / 增益设置污染——音量均衡靠它学习每首歌的响度。
  *
  * 不引入任何依赖，纯 Web Audio API。
  */
@@ -42,6 +45,9 @@ export const EQ_RANGE = { min: -12, max: 12 }
 
 /** 总增益范围（dB）：±15，超出这个值再拉只会失真 */
 export const GAIN_RANGE = { min: -15, max: 15 }
+
+/** 音量均衡自动补偿的上下限（dB）：压得再狠也不超过 ±12，避免把安静的歌炸出失真 */
+export const NORM_RANGE = { min: -12, max: 12 }
 
 /** 常见预设：值对应 EQ_BANDS 的顺序 */
 export const EQ_PRESETS = {
@@ -72,6 +78,7 @@ let ctx = null
 let source = null
 let eqNodes = []
 let masterGain = null
+let normGain = null
 let panner = null
 let analyser = null
 let attachedTo = null
@@ -112,6 +119,7 @@ function rebuild(audio) {
     source = ctx.createMediaElementSource(audio)
 
     masterGain = ctx.createGain()
+    normGain = ctx.createGain()
     panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null
     analyser = ctx.createAnalyser()
     analyser.fftSize = 256
@@ -133,12 +141,14 @@ function rebuild(audio) {
     }
     source.connect(eqNodes[0])
 
-    // masterGain → panner（或直接出）→ destination
+    // masterGain → normGain → panner（或直接出）→ destination
     if (panner) {
-      masterGain.connect(panner)
+      masterGain.connect(normGain)
+      normGain.connect(panner)
       panner.connect(ctx.destination)
     } else {
-      masterGain.connect(ctx.destination)
+      masterGain.connect(normGain)
+      normGain.connect(ctx.destination)
     }
 
     // analyser 旁路挂在 EQ 链的输入端
@@ -151,6 +161,7 @@ function rebuild(audio) {
     source = null
     eqNodes = []
     masterGain = null
+    normGain = null
     panner = null
     analyser = null
     attachedTo = null
@@ -215,6 +226,40 @@ export function getAnalyser() {
   return analyser
 }
 
+/**
+ * 量当前这一小段的 RMS（0~1）。给「音量均衡」学习每首歌的响度用。
+ * 一次拿 fftSize（256）个采样 ≈ 5ms，调用方按固定间隔取很多次再平均，
+ * 单块抖动大没关系。没建链返回 null。
+ */
+export function sampleRms() {
+  if (!analyser || !ctx) return null
+  const n = analyser.fftSize
+  const buf = sampleRms._buf && sampleRms._buf.length === n
+    ? sampleRms._buf
+    : (sampleRms._buf = new Float32Array(n))
+  try {
+    analyser.getFloatTimeDomainData(buf)
+  } catch {
+    return null
+  }
+  let sum = 0
+  for (let i = 0; i < n; i += 1) sum += buf[i] * buf[i]
+  return Math.sqrt(sum / n)
+}
+
+/** 音量均衡补偿（dB）。0 = 不补偿 */
+export function setNormGain(db) {
+  const n = Number(db)
+  const v = Number.isFinite(n) ? clamp(n, NORM_RANGE.min, NORM_RANGE.max) : 0
+  if (!normGain) return v
+  try {
+    normGain.gain.setTargetAtTime(Math.pow(10, v / 20), ctx.currentTime, 0.15)
+  } catch {
+    normGain.gain.value = Math.pow(10, v / 20)
+  }
+  return v
+}
+
 /** 是否已建成链（不支持的环境一直是 false） */
 export function isReady() {
   return Boolean(source && masterGain && attachedTo)
@@ -225,9 +270,10 @@ export function isSupported() {
   return supported()
 }
 
-/** 全部复位：EQ 归零、增益归零、平衡居中 */
+/** 全部复位：EQ 归零、增益归零、平衡居中、音量均衡补偿归零 */
 export function reset() {
   applyEq(EQ_PRESETS.flat)
   setMasterGain(0)
+  setNormGain(0)
   setBalance(0)
 }

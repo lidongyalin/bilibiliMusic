@@ -1567,6 +1567,11 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 .meta-head-text h3 { margin: 0; font-size: 15px; font-weight: 600; }
 .meta-head-text p { margin: 2px 0 0; font-size: 12px; color: var(--text-faint); }
 .meta-body { display: flex; flex-direction: column; gap: 12px; }
+/* 批量标签编辑（F28）的说明文字 */
+.meta-batch-hint,
+.meta-batch-warn { margin: 0; font-size: 12px; line-height: 1.6; }
+.meta-batch-hint { color: var(--text-dim); }
+.meta-batch-warn { color: var(--text-faint); }
 .meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .meta-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .meta-field > label { font-size: 12px; color: var(--text-dim); }

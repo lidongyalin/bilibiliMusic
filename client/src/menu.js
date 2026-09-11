@@ -2,12 +2,13 @@ import { state } from './state.js'
 import { ElMessage } from 'element-plus'
 import {
   isLocalSong, playSong, playNext, addToQueue, togglePlay,
-  cycleMode, prev, setSpeed, speedLabel, sleepRemaining, startSleepTimer, SLEEP_OPTIONS, SPEED_OPTIONS,
+  cycleMode, prev, setSpeed, speedLabel, sleepRemaining, startSleepTimer,
+  startSleepAfterCurrent, SLEEP_OPTIONS, SPEED_OPTIONS,
 } from './player.js'
 import { toggleFavorite, isCurrentFaved } from './favorites.js'
-import { addSongsToPlaylist } from './playlists.js'
+import { addSongsToPlaylist, removeSongFromPlaylist } from './playlists.js'
 import { saveMeta, restoreMeta, removeSongs, exportM3U } from './library.js'
-import { toggleLyricPanel } from './lyrics.js'
+import { toggleLyricPanel, setLyricOpen } from './lyrics.js'
 import { MODE_LABELS } from './icons.js'
 import { clip } from './utils.js'
 
@@ -97,6 +98,27 @@ export function songMenu(x, y, song, list) {
     items.push({ label: '打开 B 站页面', icon: 'external', onClick: () => openBilibili(song) })
   }
 
+  // 歌单视图里补一个「从当前歌单移除」：行内按钮只在歌单详情页有，右键也该有
+  if (state.view === 'playlist' && state.currentPlaylistId) {
+    const pid = state.currentPlaylistId
+    items.push(sep, {
+      label: '从当前歌单移除',
+      icon: 'trash',
+      danger: true,
+      onClick: async () => {
+        const ok = await removeSongFromPlaylist(pid, song.bvid)
+        if (ok) ElMessage.success(`已从「${state.currentPlaylist?.name || '歌单'}」移除`)
+      },
+    })
+  }
+  // 歌词偏移校准（F7）的入口：面板里有 ±0.1s 和整体偏移
+  items.push(sep, {
+    label: '歌词偏移校准…',
+    icon: 'lyrics',
+    disabled: !isCurrent,
+    onClick: () => setLyricOpen(true),
+  })
+
   return items
 }
 
@@ -123,6 +145,12 @@ export function playerMenu() {
     label: m >= 60 ? `${m / 60} 小时后停止` : `${m} 分钟后停止`,
     onClick: () => startSleepTimer(m),
   }))
+  sleepChildren.push({ divider: true })
+  sleepChildren.push({
+    label: state.sleepAfterCurrent ? '✓ 播完当前曲后停止' : '播完当前曲后停止',
+    icon: 'sleep',
+    onClick: () => startSleepAfterCurrent(),
+  })
   if (sleeping) {
     sleepChildren.push({ divider: true })
     sleepChildren.push({ label: '立即停止', icon: 'close', onClick: () => startSleepTimer(0) })
@@ -153,7 +181,8 @@ export function playerMenu() {
   ]
 }
 
-/** 歌单 / 分组 / 智能歌单的右键菜单（F17） */
+/** 歌单 / 分组 / 智能歌单的右键菜单（F17）。
+ *  kind === 'playlist' 时 target 可带 onRename / onDelete，菜单里出现对应入口 */
 export function playlistMenu(x, y, kind, target, songs) {
   const list = Array.isArray(songs) ? songs : []
   const items = [
@@ -162,6 +191,19 @@ export function playlistMenu(x, y, kind, target, songs) {
     { label: '加入播放队列', icon: 'add-queue', onClick: () => { const n = addToQueue(list); ElMessage.success(n ? `已加入队列 ${n} 首` : '队列里都已有') } },
     sep,
   ]
+
+  if (kind === 'playlist' && (target?.onRename || target?.onDelete)) {
+    if (target.onRename) items.push({ label: '重命名歌单…', icon: 'edit', onClick: () => target.onRename() })
+    if (target.onDelete) {
+      items.push({
+        label: '删除歌单…',
+        icon: 'trash',
+        danger: true,
+        onClick: () => target.onDelete(),
+      })
+    }
+    items.push(sep)
+  }
 
   if (kind === 'local') {
     items.push({ label: '导出为 m3u', icon: 'export', onClick: () => exportM3U(list.map((s) => s.bvid)) })

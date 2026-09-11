@@ -4,7 +4,13 @@ import { prefs } from './prefs.js'
 import { state } from './state.js'
 import { MODE_LABELS } from './icons.js'
 import { clip } from './utils.js'
-import { attach as attachEngine, resume as resumeEngine, applyEq, setMasterGain, setBalance } from './audio-engine.js'
+import {
+  attach as attachEngine, resume as resumeEngine, applyEq, setMasterGain, setBalance,
+  setNormGain, sampleRms,
+} from './audio-engine.js'
+import {
+  MIN_BLOCKS, SAMPLE_INTERVAL_MS, createLoudnessStore, normGainDb, rmsToDb,
+} from './loudness.js'
 
 /**
  * 播放控制器。用 new Audio() 而不是 DOM 里的 <audio>，
@@ -26,6 +32,16 @@ const RETRY_DELAY_MS = 1200
 
 // 睡眠定时的计时器句柄（淡出参数在下面的「睡眠定时」小节里）
 let sleepTimer = 0
+
+// 音量均衡（F26）：当前这首的 RMS 采样。块数够 MIN_BLOCKS 才落库，
+// 落库间隔用节流控制，别每首歌都写一次 localStorage
+const loudness = createLoudnessStore(
+  () => prefs.getLoudnessMap(),
+  (m) => prefs.setLoudnessMap(m)
+)
+let normBlocks = []
+let normLastSample = 0
+let normSaved = false
 
 // 无缝播放：提前用第二个 Audio 元素把下一首的请求发出去，
 // 真正切换时数据已经在浏览器缓存里，交接空档从「一次网络往返」缩到「一次解码」
@@ -72,6 +88,7 @@ function bindEvents() {
     state.progress = a.currentTime
     scheduleSave()
     tickSleepTimer()
+    tickLoudness()
     // 离结尾 30 秒时开始预取下一首，让交接尽量无感
     if (state.duration - a.currentTime < 30) preloadNext()
   })
@@ -97,6 +114,15 @@ function bindEvents() {
 
   a.addEventListener('ended', () => {
     if (state.current) prefs.clearPosition(state.current.bvid)
+    // 「播完当前曲后停止」：自然播完就停在这里，不往下切
+    if (state.sleepAfterCurrent) {
+      state.sleepAfterCurrent = false
+      state.status = 'paused'
+      setPlaybackState('paused')
+      saveNow()
+      ElMessage({ message: '已播完当前曲目，播放停止', type: 'success', duration: 2400 })
+      return
+    }
     next(true)
   })
 
@@ -256,11 +282,14 @@ export async function playAt(index) {
   state.status = 'loading'
   state.progress = 0
   state.duration = 0
+  // 「播完当前曲后停止」跟着上一首走：用户主动切歌就是新意图
+  if (state.sleepAfterCurrent) state.sleepAfterCurrent = false
   pendingResume = prefs.getPosition(song.bvid) || 0
   clearErrorFlag()
 
   const a = getAudio()
   applySpeed(a)
+  normBeginTrack(song)
   try { a.currentTime = 0 } catch { /* ignore */ }
   a.src = api.streamUrl(song.bvid)
   a.load()
@@ -505,6 +534,7 @@ export function sleepRemaining() {
 export function startSleepTimer(minutes) {
   const n = Math.round(Number(minutes) || 0)
   if (n <= 0) return cancelSleepTimer()
+  state.sleepAfterCurrent = false
   state.sleepEndsAt = Date.now() + n * 60000
   state.sleepCountdown = sleepRemaining()
   prefs.setSleepMinutes(n)
@@ -512,9 +542,21 @@ export function startSleepTimer(minutes) {
   return true
 }
 
+/**
+ * 「播完当前曲后停止」：不定时刻，等自然播完就停。
+ * 和分钟定时互斥——两种意图同时挂着没有意义。
+ * 用户手动切歌会清掉它（playAt 里），因为「这首播完就停」跟着那首歌走。
+ */
+export function startSleepAfterCurrent() {
+  cancelSleepTimer()
+  state.sleepAfterCurrent = true
+  return true
+}
+
 export function cancelSleepTimer() {
   state.sleepEndsAt = 0
   state.sleepCountdown = 0
+  state.sleepAfterCurrent = false
   fadeStart = 0
   if (sleepTimer) {
     clearInterval(sleepTimer)
@@ -580,6 +622,74 @@ export function resetAudioFx() {
   setEq([0, 0, 0, 0, 0, 0, 0, 0, 0])
   setGain(0)
   setBalanceValue(0)
+}
+
+// ---------- 音量均衡（F26）：学习式响度归一 ----------
+
+/**
+ * 切到某首时调用：丢掉上一首的采样，套上已学到的补偿。
+ * 没学过的这首不补偿——宁可前几秒不齐，也别拿猜的值乱拉。
+ */
+function normBeginTrack(song) {
+  normBlocks = []
+  normLastSample = 0
+  normSaved = false
+  if (!state.normEnabled || !song) {
+    setNormGain(0)
+    return
+  }
+  const rms = loudness.get(song.bvid)
+  setNormGain(rms ? normGainDb(rms) : 0)
+}
+
+/** 播放中采样。挂在 timeupdate 上，浏览器实际回调节奏比 500ms 略密，这里自己节流 */
+function tickLoudness() {
+  if (!state.normEnabled || !state.current || state.status !== 'playing') return
+  const now = Date.now()
+  if (now - normLastSample < SAMPLE_INTERVAL_MS) return
+  normLastSample = now
+  const rms = sampleRms()
+  if (rms == null || rms <= 0) return
+  normBlocks.push(rms)
+  if (normBlocks.length > 600) normBlocks.shift()
+  // 采够了就学一次并立刻把补偿套上（首次播放也能在后半段开始起作用）
+  if (!normSaved && normBlocks.length >= MIN_BLOCKS) {
+    normSaved = true
+    const learned = loudness.learn(state.current.bvid, normBlocks)
+    if (learned) setNormGain(normGainDb(learned))
+  }
+}
+
+/** 开关音量均衡。关掉时把补偿归零，已学到的响度数据保留 */
+export function setNormEnabled(v) {
+  state.normEnabled = Boolean(v)
+  prefs.setNormEnabled(state.normEnabled)
+  if (!state.normEnabled) {
+    setNormGain(0)
+    return state.normEnabled
+  }
+  const rms = state.current ? loudness.get(state.current.bvid) : 0
+  setNormGain(rms ? normGainDb(rms) : 0)
+  return state.normEnabled
+}
+
+/** 忘掉全部学到的响度（设置里的「重新学习」） */
+export function clearLoudnessData() {
+  loudness.clear()
+  setNormGain(0)
+  return true
+}
+
+/** 当前这首已学到的响度（dBFS），没有返回 null。设置面板展示用 */
+export function currentLoudnessDb() {
+  if (!state.current) return null
+  const rms = loudness.get(state.current.bvid)
+  return rms ? rmsToDb(rms) : null
+}
+
+/** 已学到响度的歌曲数（设置面板展示用） */
+export function loudnessCount() {
+  return loudness.size()
 }
 
 export function setGapless(v) {

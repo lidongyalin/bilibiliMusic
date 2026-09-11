@@ -206,14 +206,15 @@ async function onDupRemove(song) {
   if (!state.duplicates.length) dupDialogOpen.value = false
 }
 
-/** 标题栏右键：整批操作（F17） */
+/** 标题栏右键：整批操作（F17）。歌单视图把重命名/删除入口一并交给菜单 */
 function onHeaderContext(e) {
   e.preventDefault()
   const songs = list.value
   let kind = 'search'
   if (state.view === 'playlist') kind = 'playlist'
   else if (state.view === 'library' || state.view === 'group') kind = 'local'
-  state.contextMenu = { x: e.clientX, y: e.clientY, items: playlistMenu(e.clientX, e.clientY, kind, null, songs) }
+  const target = kind === 'playlist' ? { onRename: openRename, onDelete } : null
+  state.contextMenu = { x: e.clientX, y: e.clientY, items: playlistMenu(e.clientX, e.clientY, kind, target, songs) }
 }
 
 function onSort(key) {
@@ -252,6 +253,18 @@ function onCreateThenAdd() {
   window.dispatchEvent(
     new CustomEvent('create-playlist-and-add', { detail: selectedSongs.value })
   )
+}
+
+/** 批量修正标签（F28）：交给 MetaEditor 的批量模式 */
+function onBatchEditMeta() {
+  const ids = selectedSongs.value
+    .filter((s) => String(s.bvid || '').startsWith('local-'))
+    .map((s) => String(s.bvid).replace(/^local-/, ''))
+  if (!ids.length) {
+    ElMessage.info('选中的没有本地曲目，B 站曲目没有标签可改')
+    return
+  }
+  state.metaBatch = { ids, count: ids.length }
 }
 
 // ---------- 触底自动加载 ----------
@@ -451,6 +464,15 @@ watch(
           >
             <el-icon><Delete /></el-icon>
             <span>移出曲库</span>
+          </button>
+          <button
+            type="button"
+            class="select-bar-action"
+            title="给选中的曲目统一设置歌手 / 专辑 / 流派等（留空的不改）"
+            @click="onBatchEditMeta"
+          >
+            <el-icon><EditPen /></el-icon>
+            <span>批量编辑标签</span>
           </button>
         </template>
 

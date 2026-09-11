@@ -15,7 +15,7 @@
     "dev:client": "npm run dev --workspace client",
     "build": "npm run build --workspace client",
     "setup": "npm install && npm run build",
-    "test": "node scripts/test-history.mjs && node scripts/test-lyrics.mjs && node scripts/test-lyrics-multisource.mjs && node scripts/test-lyric-lines.mjs && node scripts/test-search-response.mjs && node scripts/test-search-cache.mjs && node scripts/test-playlists.mjs && node scripts/test-localtags.mjs && node scripts/test-library.mjs && node scripts/test-local-http.mjs",
+    "test": "node scripts/test-history.mjs && node scripts/test-lyrics.mjs && node scripts/test-lyrics-multisource.mjs && node scripts/test-lyric-lines.mjs && node scripts/test-search-response.mjs && node scripts/test-search-cache.mjs && node scripts/test-playlists.mjs && node scripts/test-localtags.mjs && node scripts/test-library.mjs && node scripts/test-local-http.mjs && node scripts/test-loudness.mjs",
     "icon": "node scripts/make-icon.mjs",
     "verify:asar": "node scripts/verify-asar.mjs",
     "verify:colors": "node scripts/check-asar-colors.mjs",

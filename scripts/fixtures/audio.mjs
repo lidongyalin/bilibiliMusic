@@ -16,7 +16,10 @@ export function mp3Header(bitrateIdx = 9, srIdx = 0, channels = 2, padding = 0) 
 }
 
 export function mp3FrameLen(bitrateKbps, sr, padding = 0) {
-  return Math.floor(144000 * bitrateKbps * 1000 / sr) + padding;
+  // MPEG1 Layer3 每帧 1152 采样：字节数 = 144 * kbps * 1000 / sr + padding。
+  // 之前多乘了 1000，一个"帧"有 408KB、整文件虚大 1000 倍，
+  // 解析器会退化成整文件逐字节扫帧，性能基准全被这个假尺寸带偏
+  return Math.floor((144 * bitrateKbps * 1000) / sr) + padding;
 }
 
 /** enc 默认 0x03（UTF-8）。默认用 ISO-8859-1 会让中文标签直接乱码 */

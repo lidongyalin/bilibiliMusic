@@ -5,7 +5,7 @@ import { api } from '../api.js'
 import { prefs } from '../prefs.js'
 import { state } from '../state.js'
 import { setTheme, setAccent, ACCENTS } from '../theme.js'
-import { setSpeed, setGapless, SLEEP_OPTIONS, SPEED_OPTIONS, startSleepTimer } from '../player.js'
+import { setSpeed, setGapless, SLEEP_OPTIONS, SPEED_OPTIONS, startSleepTimer, setNormEnabled, clearLoudnessData, currentLoudnessDb, loudnessCount } from '../player.js'
 import { EQ_PRESET_NAMES, EQ_PRESETS } from '../audio-engine.js'
 import { setEq } from '../player.js'
 
@@ -100,6 +100,27 @@ function sleepNow(min) {
   }
   startSleepTimer(min)
   ElMessage.success(`${min} 分钟后自动停止播放`)
+}
+
+// ---------- 音量均衡（F26） ----------
+
+const learnedText = computed(() => {
+  // 响度数据不在响应式 state 里，靠「弹窗每次打开都重算」来刷新
+  void open.value
+  const n = loudnessCount()
+  const cur = currentLoudnessDb()
+  const curTxt = cur == null ? '' : `，当前这首 ${cur.toFixed(1)} dBFS`
+  return n ? `已记录 ${n} 首${curTxt}。` : '还没有记录，正常听几首就有了。'
+})
+
+function onNormChange(v) {
+  setNormEnabled(v)
+  ElMessage.success(v ? '音量均衡已开启，边听边学习每首歌的响度' : '音量均衡已关闭')
+}
+
+function onClearLoudness() {
+  clearLoudnessData()
+  ElMessage.success('已清空学习记录，接下来会重新学习')
 }
 </script>
 
@@ -201,6 +222,21 @@ function sleepNow(min) {
               {{ name }}
             </button>
           </div>
+        </div>
+        <div class="st-row">
+          <span class="st-label">音量均衡</span>
+          <el-switch :model-value="state.normEnabled" @change="onNormChange" />
+          <span class="st-hint">
+            学习式响度归一：边播边记每首歌的响度，下次播它时自动补偿，曲与曲之间不再忽大忽小。
+            首次播放一首时不补偿，听完约 8 秒后开始生效。补偿上限 ±12dB，不会把安静的歌拉到失真。
+          </span>
+        </div>
+        <div v-if="state.normEnabled" class="st-row">
+          <span class="st-label">已学习</span>
+          <span class="st-hint">
+            {{ learnedText }}
+            <button type="button" class="st-link" @click="onClearLoudness">清空重学</button>
+          </span>
         </div>
       </section>
 

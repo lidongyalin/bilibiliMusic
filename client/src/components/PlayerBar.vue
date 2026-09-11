@@ -17,8 +17,8 @@ import Svg from './Svg.vue'
 import { state } from '../state.js'
 import { ICON_PATHS, MODE_ICONS, MODE_LABELS, volumeIconPath } from '../icons.js'
 import {
-  cycleMode, next, prev, seekTo, setVolume, toggleMute, togglePlay,
-  setSpeed, speedLabel, sleepRemaining, startSleepTimer, SLEEP_OPTIONS,
+  cancelSleepTimer, cycleMode, next, prev, seekTo, setVolume, toggleMute, togglePlay,
+  setSpeed, speedLabel, sleepRemaining, startSleepAfterCurrent, startSleepTimer, SLEEP_OPTIONS,
 } from '../player.js'
 import { toggleLyricPanel } from '../lyrics.js'
 import { isCurrentFaved, toggleFavorite } from '../favorites.js'
@@ -87,27 +87,33 @@ function onCoverError() {
 
 const speedText = computed(() => speedLabel(state.speed))
 const sleepText = computed(() => {
+  if (state.sleepAfterCurrent) return '播完即停'
   const s = sleepRemaining()
   if (!s) return '睡眠定时'
   const m = Math.floor(s / 60)
   const ss = s % 60
   return `定时 ${m}:${String(ss).padStart(2, '0')}`
 })
-const sleepActive = computed(() => sleepRemaining() > 0)
+const sleepActive = computed(() => sleepRemaining() > 0 || state.sleepAfterCurrent)
 const queueCount = computed(() => state.queue.length)
 
 function onSpeedChange(v) {
   setSpeed(v)
 }
 
-/** 睡眠定时：下拉里选了分钟数就启动，再点一次关闭 */
+/**
+ * 睡眠定时：选分钟数启动定时（已有定时在跑时再选就是取消），
+ * 选「播完即停」切到播完当前曲模式，再点一次取消。
+ */
 function onSleepChange(v) {
-  if (!v || !state.sleepEndsAt) return startSleepTimer(v)
-  if (state.sleepEndsAt) {
-    startSleepTimer(0)
-    return
+  if (v === 'after-current') {
+    if (state.sleepAfterCurrent) return cancelSleepTimer()
+    return startSleepAfterCurrent()
   }
-  startSleepTimer(v)
+  const n = Math.round(Number(v) || 0)
+  if (!n) return cancelSleepTimer()
+  if (state.sleepAfterCurrent || !state.sleepEndsAt) return startSleepTimer(n)
+  cancelSleepTimer()
 }
 
 /**
@@ -331,7 +337,10 @@ function openPlayerMenu() {
               >
                 {{ m >= 60 ? `${m / 60} 小时` : `${m} 分钟` }}后停止
               </el-dropdown-item>
-              <el-dropdown-item v-if="sleepActive" divided command="0">立即停止</el-dropdown-item>
+              <el-dropdown-item divided command="after-current">
+                {{ state.sleepAfterCurrent ? '✓ 播完当前曲后停止' : '播完当前曲后停止' }}
+              </el-dropdown-item>
+              <el-dropdown-item v-if="sleepActive" command="0">立即停止</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>

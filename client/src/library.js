@@ -234,6 +234,34 @@ function stripLocal(bvid) {
   return String(bvid || '').replace(/^local-/, '')
 }
 
+/**
+ * 批量修正元数据（F28）。一次请求改一批；patch 里留空的字段不动。
+ * 后端把选中的每首重算序列化，这里用返回的 updated/missing 提示，
+ * 再本地把这几首从曲库列表里重拉一遍（顺序、分组都可能因歌手/专辑变了而变）。
+ */
+export async function saveMetaBatch(songs, patch) {
+  // 本地曲目的 bvid 带 local- 前缀；B 站曲目没有标签可改，直接跳过
+  const ids = (Array.isArray(songs) ? songs : [])
+    .filter((s) => String(s.bvid || '').startsWith('local-'))
+    .map((s) => stripLocal(s.bvid))
+    .filter(Boolean)
+  if (!ids.length) {
+    ElMessage.info('选中的没有本地曲目')
+    return false
+  }
+  try {
+    const res = await api.updateLibraryMetaBatch(ids, patch)
+    await refreshLibrary()
+    if (state.libraryDrill) await drillInto(state.libraryDrill.type, state.libraryDrill.value)
+    const skipped = res.skipped ? '（没有可修改的字段）' : ''
+    ElMessage.success(`已更新 ${res.updated} 首的标签${res.missing ? `，${res.missing} 首未找到` : ''}${skipped}`)
+    return true
+  } catch (err) {
+    ElMessage.error(err.message)
+    return false
+  }
+}
+
 // ---------- 批量移除（F28） ----------
 
 export async function removeSongs(songs) {
@@ -308,9 +336,11 @@ export function listDurationText(list = currentList()) {
   return h ? `${h} 小时 ${m} 分` : `${m} 分钟`
 }
 
-/** 当前列表的歌曲数 + 时长，供标题栏显示 */
-export function listMeta() {
-  const list = currentList()
-  const dur = listDurationText(list)
-  return list.length ? `${list.length} 首${dur ? ` · ${dur}` : ''}` : ''
+/** 当前列表的歌曲数 + 时长，供标题栏显示。
+ *  参数是筛选/排序后的列表（SongList 传进来）——之前这里写死用 currentList()，
+ *  筛到只剩 1 首时标题栏还挂着「5000 首」，注释里说要避免的正是这个 */
+export function listMeta(list = currentList()) {
+  const rows = Array.isArray(list) ? list : currentList()
+  const dur = listDurationText(rows)
+  return rows.length ? `${rows.length} 首${dur ? ` · ${dur}` : ''}` : ''
 }

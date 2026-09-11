@@ -3,14 +3,17 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { state } from '../state.js'
 import { submitMetaEditor, closeMetaEditor } from '../menu.js'
-import { restoreMeta } from '../library.js'
+import { restoreMeta, saveMetaBatch } from '../library.js'
 
 /**
- * 本地曲目标签编辑（F10）。
+ * 本地曲目标签编辑（F10）+ 批量标签编辑（F28）。
  *
  * 只写本地覆盖，不改动原文件的 ID3/FLAC/Vorbis 标签——
  * 好处是随时能一键恢复，坏标签也不怕。
  * 空值表示「这一项恢复成原标签」。
+ *
+ * 批量模式由 state.metaBatch 驱动：只露 艺术家/专辑/专辑歌手/流派/年份 五个字段，
+ * 留空的字段不动——批量场景下没人会把选区里所有歌改成同一个标题。
  */
 
 const editing = computed(() => state.metaEditor)
@@ -95,6 +98,51 @@ async function onRestore() {
     saving.value = false
   }
 }
+
+// ---------- 批量编辑（F28） ----------
+
+const batch = computed(() => state.metaBatch)
+const batchForm = reactive({ artist: '', album: '', albumArtist: '', genre: '', year: '' })
+const batchSaving = ref(false)
+
+watch(batch, (v) => {
+  if (!v) return
+  batchForm.artist = ''
+  batchForm.album = ''
+  batchForm.albumArtist = ''
+  batchForm.genre = ''
+  batchForm.year = ''
+})
+
+function closeBatch() {
+  state.metaBatch = null
+}
+
+/** 只把填了的字段交上去；全空等于什么都没改 */
+async function onBatchSave() {
+  if (batchSaving.value) return
+  const ids = Array.isArray(batch.value?.ids) ? batch.value.ids : []
+  const patch = {}
+  for (const [k, v] of Object.entries(batchForm)) {
+    if (String(v || '').trim()) patch[k] = String(v).trim()
+  }
+  if (!Object.keys(patch).length) {
+    ElMessage.info('没有填写任何要修改的字段')
+    return
+  }
+  batchSaving.value = true
+  try {
+    const ok = await saveMetaBatchByIds(ids, patch)
+    if (ok) closeBatch()
+  } finally {
+    batchSaving.value = false
+  }
+}
+
+/** ids 是纯本地 id 列表，包一层让 saveMetaBatch 复用它的提示与刷新逻辑 */
+function saveMetaBatchByIds(ids, patch) {
+  return saveMetaBatch(ids.map((id) => ({ bvid: `local-${id}` })), patch)
+}
 </script>
 
 <template>
@@ -167,6 +215,63 @@ async function onRestore() {
         <button type="button" class="meta-cancel" @click="closeMetaEditor">取消</button>
         <button type="button" class="meta-save" :disabled="saving" @click="onSave">
           {{ saving ? '保存中…' : '保存' }}
+        </button>
+      </span>
+    </template>
+  </el-dialog>
+
+  <!-- 批量标签编辑（F28）：留空的字段不动 -->
+  <el-dialog
+    :model-value="Boolean(batch)"
+    width="460px"
+    :close-on-click-modal="false"
+    class="meta-dialog"
+    @close="closeBatch"
+  >
+    <template #header>
+      <div class="meta-head">
+        <span class="meta-cover meta-cover-empty">♪</span>
+        <div class="meta-head-text">
+          <h3>批量编辑标签</h3>
+          <p>对选中的 {{ batch?.count ?? 0 }} 首生效，只写本地覆盖</p>
+        </div>
+      </div>
+    </template>
+
+    <div class="meta-body">
+      <p class="meta-batch-hint">只填你想改的那几项，留空的字段保持每首歌自己的值。</p>
+      <div class="meta-row">
+        <div class="meta-field">
+          <label>歌手</label>
+          <el-input v-model="batchForm.artist" placeholder="不改" maxlength="200" clearable />
+        </div>
+        <div class="meta-field">
+          <label>专辑</label>
+          <el-input v-model="batchForm.album" placeholder="不改" maxlength="200" clearable />
+        </div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-field">
+          <label>专辑歌手</label>
+          <el-input v-model="batchForm.albumArtist" placeholder="不改" maxlength="200" clearable />
+        </div>
+        <div class="meta-field">
+          <label>流派</label>
+          <el-input v-model="batchForm.genre" placeholder="不改" maxlength="200" clearable />
+        </div>
+      </div>
+      <div class="meta-field">
+        <label>年份</label>
+        <el-input v-model="batchForm.year" placeholder="不改" maxlength="16" clearable />
+      </div>
+      <p class="meta-batch-warn">标题不能批量改——把选区里所有歌改成同一个标题没有意义。</p>
+    </div>
+
+    <template #footer>
+      <span class="meta-foot-right">
+        <button type="button" class="meta-cancel" @click="closeBatch">取消</button>
+        <button type="button" class="meta-save" :disabled="batchSaving" @click="onBatchSave">
+          {{ batchSaving ? '保存中…' : `更新 ${batch?.count ?? 0} 首` }}
         </button>
       </span>
     </template>

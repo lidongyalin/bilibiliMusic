@@ -587,6 +587,47 @@ export const library = {
     return serializeSong(hit, null);
   },
 
+  /**
+   * 批量修正元数据（F28）。ids 里每一首套同一份 patch，一次 load + 一次 persist——
+   * 不走 N 次 updateMeta，那个每首都落一次盘，选几百首要卡半天。
+   * 刻意不开放 title：把整个选区的标题改成同一个字符串等于毁掉曲库。
+   * 空值与「和原标签相同」的值都不写覆盖，语义跟 updateMeta 一致，
+   * 否则 hasMetaOverride 会一直是 true，列表上永远挂着「已修改」。
+   */
+  async updateMetaBatch(ids, patch) {
+    const wanted = new Set((Array.isArray(ids) ? ids : []).map(normId).filter(Boolean));
+    if (!wanted.size) return { updated: 0, missing: 0 };
+    const KEYS = ['artist', 'album', 'albumArtist', 'year', 'genre'];
+    const clean = {};
+    for (const k of KEYS) {
+      if (patch[k] === undefined || patch[k] === null) continue;
+      const v = String(patch[k]).replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (v) clean[k] = v;
+    }
+    if (!Object.keys(clean).length) return { updated: 0, missing: wanted.size, skipped: true };
+    const store = await load();
+    let updated = 0;
+    const touched = [];
+    for (const song of store.songs) {
+      const key = normId(song.id);
+      if (!wanted.has(key)) continue;
+      wanted.delete(key);
+      const next = { ...(store.overrides[song.id] || {}) };
+      for (const k of KEYS) {
+        if (clean[k] === undefined) continue;
+        if (clean[k] !== (song[k] || '')) next[k] = clean[k];
+        else delete next[k];
+      }
+      if (Object.keys(next).length) store.overrides[song.id] = next;
+      else delete store.overrides[song.id];
+      updated += 1;
+      touched.push(song.id);
+    }
+    await persist();
+    for (const id of touched) artCache.delete(id);
+    return { updated, missing: wanted.size };
+  },
+
   async removeSongs(ids) {
     const store = await load();
     const set = new Set((Array.isArray(ids) ? ids : []).map((i) => normId(i)));
