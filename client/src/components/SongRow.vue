@@ -42,23 +42,6 @@ const localHint = computed(() => {
   return songHint(s)
 })
 
-/**
- * 点击行：多选模式下只切换勾选（不播放）；
- * 正常模式下点当前曲目 = 暂停/继续，点别的 = 切歌。
- */
-function onRowClick() {
-  if (inSelectMode.value) {
-    toggleSelect(props.song.bvid)
-    return
-  }
-  if (isLoading.value) return
-  if (isCurrent.value) {
-    togglePlay()
-    return
-  }
-  emit('play', props.song)
-}
-
 /** 单首加入歌单：不需要清多选（此时不在多选模式） */
 function onAddToPlaylist(id) {
   void addSongsToPlaylist(id, [props.song])
@@ -123,8 +106,12 @@ function onTouchEnd() {
   }
 }
 
+/**
+ * 点击行：多选模式下只切换勾选（不播放）；
+ * 正常模式下点当前曲目 = 暂停/继续，点别的 = 切歌。
+ * 长按刚触发过时吞掉这次 click——它是松手带出来的，不是选择意图。
+ */
 function onRowClick() {
-  // 长按刚触发过：这次 click 是松手带出来的，不是选择意图
   if (pressHandled) {
     pressHandled = false
     return
@@ -139,7 +126,6 @@ function onRowClick() {
     return
   }
   emit('play', props.song)
-}
 }
 </script>
 

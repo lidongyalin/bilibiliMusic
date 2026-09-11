@@ -141,18 +141,26 @@ preload 用 `.cjs` 扩展名是刻意的：沙箱 preload 必须是 CommonJS，�
 
 深色主题对齐网易云音乐桌面版：强调色用网易云红 `#EC4141`（不是粉色），底色是纯中性炭黑 `#121212` 不带紫蓝调，侧栏选中态是「深一档灰底 + 白字」而不是整块强调色，强调色只落在图标上。所有变量集中在 `client/src/assets/base.css` 顶部。
 
-一套布局从桌面覆盖到手机，按宽度分档，已实测 1920×1080 / 1440×900 / 1024×768 / 768×1024 / 430×932 / 390×844 / 360×740 / 844×390：
+配色有两档文字：`--text-dim` 承载歌手名这类次级信息，`--text-faint` 承载时长 / 播放量 / 序号 / 播放时间。后者曾经是深色 `#666`（在 `#121212` 上 3.26:1）、浅色 `#aaa`（在白底上 2.32:1），都低于 WCAG AA 的 4.5:1，现在是深色 `#8a8a8a`（5.4:1）、浅色 `#7d7d7d`（4.1:1）。**改这两个值前先算对比度**——它们看着是「装饰灰」，实际承载的是必要信息。调色板真正生效的地方是 `client/src/theme.js` 的 `LIGHT` / `DARK` 两张表，`base.css` 的 `:root` 只是首屏兜底，两边必须同步。
+
+播放队列面板和歌词面板一样停在播放条上沿（`height: calc(100% - var(--bar-real-h, var(--bar-h)))`），不盖住播放条右侧的音量 / 倍速 / 定时 / 歌词 / EQ / 设置。滚动条大拇指用 `--scrollbar-thumb`，两个引擎（Chromium 的 `::-webkit-scrollbar` 和 Firefox 的 `scrollbar-color`）一个色。
+
+一套布局从桌面覆盖到手机，按宽度分档，已实测 1920×1080 / 1440×900 / 1024×768 / 768×1024 / 430×932 / 390×844 / 375×667 / 360×740 / 320×568 / 844×390：
 
 | 断点 | 处理 |
 |---|---|
 | ≤1100px | 侧栏收窄 |
 | ≤900px | 侧栏更窄，隐藏播放数列 |
-| ≤640px | 侧栏转顶部横条，播放条转两行，触达目标放大到 40–44px |
-| ≤380px | 隐藏时长列，封面缩到 38px |
+| ≤640px | 侧栏转顶部横条，播放条转两行，触达目标放大到 40–44px；行内「加入歌单」收进长按菜单，只留收藏，操作列从 82px 降到 40px，390px 下曲名可用宽度 140px → 180px |
+| ≤380px | 隐藏时长列，封面缩到 38px；顶栏图标缩到 36px，搜索框 `min-width: 0` 让它吸收挤压，操作列改为 `auto` 防止按钮溢出到曲名上 |
 | 高度 ≤500px 且横屏 | 播放条压到 72px |
 | ≥1700px | 列表限宽 1300px 居中 |
 
-移动端专门处理了 `100dvh`（`100vh` 在移动浏览器里大于可视高度）、刘海安全区（`viewport-fit=cover` + `env(safe-area-inset-*)`）、进度跑道命中区扩展、`touch-action: manipulation`。故意不加 `user-scalable=no`——禁用缩放是无障碍反模式。
+手机竖栏的网格轨道写成 `minmax(0, 1fr)` 而不是 `1fr`：`1fr` 等价于 `minmax(auto, 1fr)`，`auto` 那端取子元素的 min-content，而手机顶栏的搜索框 + 4 个图标 + 歌单按钮加起来超过 320px，会把整条轨道撑到 328、页面跟着横滚。
+
+顶栏的菜单项选择器必须写成 `.sidebar .el-menu.el-menu--vertical .el-menu-item`（四段类）。Element Plus 的 `.el-menu--vertical:not(.el-menu--horizontal) .el-menu-item` 是 0,3,0，而 `element-*.css` 在 `index.html` 里排在应用样式之后，只写 `.sidebar .el-menu-item` 同样是 0,3,0 就会输掉：`padding: 0` 和 `justify-content: center` 被压掉，`padding-left: 20px` 仍然生效，图标被挤到按钮右边 10px 并溢出边界。别把这个选择器「简化」回去。
+
+移动端专门处理了 `100dvh`（`100vh` 在移动浏览器里大于可视高度）、刘海安全区（`viewport-fit=cover` + `env(safe-area-inset-*)`）、进度跑道命中区扩展、`touch-action: manipulation`。故意不加 `user-scalable=no`——禁用缩放是无障碍反模式。`prefers-reduced-motion` 下歌词滚动与手机端底部弹层（Action Sheet / 歌单下拉 / 遮罩 / 弹窗）的入场动画全部关闭；它们的静止位置由 `bottom` / `top` / `margin` 直接给出，关掉不会错位。
 
 ## 架构
 

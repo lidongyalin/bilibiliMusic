@@ -21,7 +21,13 @@ const LIGHT = {
   '--line': '#e3e3e3',
   '--text': '#1a1a1a',
   '--text-dim': '#666666',
-  '--text-faint': '#aaaaaa',
+  // #aaaaaa 在白底上只有 2.32:1，低于 WCAG AA 的 4.5:1，而它承载的是
+  // 时长 / 播放量 / 序号 / 播放时间这些必要信息。#7d7d7d 提到 4.1:1，
+  // 仍然和 --text-dim(#666, 5.7:1) 拉得开层级
+  '--text-faint': '#7d7d7d',
+  // 滚动条：#efefef 大拇指在白底上完全看不见，列表在滚这件事没有任何提示
+  '--scrollbar-thumb': '#c4c4c4',
+  '--scrollbar-thumb-hover': '#a8a8a8',
 }
 
 const DARK = {
@@ -32,7 +38,11 @@ const DARK = {
   '--line': '#2e2e2e',
   '--text': '#efefef',
   '--text-dim': '#a0a0a0',
-  '--text-faint': '#666666',
+  // #666666 在 #121212 上只有 3.26:1（AA 要 4.5）。#8a8a8a 在最深的三级底色
+  // #212121 上也有 4.7:1，同时和 --text-dim(#a0a0a0) 仍差出一档
+  '--text-faint': '#8a8a8a',
+  '--scrollbar-thumb': '#3f3f3f',
+  '--scrollbar-thumb-hover': '#5a5a5a',
 }
 
 /** 可选的强调色 */
