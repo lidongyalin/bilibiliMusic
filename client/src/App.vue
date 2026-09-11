@@ -11,6 +11,7 @@ import EqualizerPanel from './components/EqualizerPanel.vue'
 import MetaEditor from './components/MetaEditor.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import Immersive from './components/Immersive.vue'
+import { installDesktopBridge } from './desktop.js'
 import { refreshFavorites } from './favorites.js'
 import { bindKeyboard } from './keyboard.js'
 import { initTheme } from './theme.js'
@@ -70,6 +71,8 @@ function onCreateAndAdd(e) {
 
 onMounted(() => {
   bindKeyboard()
+  // 桌面外壳桥：把播放状态推给托盘/缩略图栏/迷你窗，并接收它们发来的命令
+  installDesktopBridge()
   void refreshFavorites()
   void refreshPlaylists()
   // 上次停在歌单视图，把详情补拉回来

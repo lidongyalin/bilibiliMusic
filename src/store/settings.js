@@ -24,6 +24,10 @@ const SCHEMA = {
   /** 桌面歌词窗口几何 */
   desktopLyricsWidth: { type: 'int', min: 320, max: 1200, default: 640 },
   desktopLyricsHeight: { type: 'int', min: 180, max: 700, default: 260 },
+  /** F27：后台监控曲库文件夹，新增文件自动入库 */
+  monitorFolders: { type: 'bool', default: true },
+  /** F8：全局快捷键开关；关掉后只保留窗口内的快捷键 */
+  globalShortcuts: { type: 'bool', default: true },
 };
 
 let cache = null;

@@ -1,10 +1,14 @@
 /**
- * 打包产物内容自检：确认打进去的 CSS/JS/HTML 真的是新版本。
+ * 打包产物内容自检：确认打进去的 CSS/JS/HTML/主进程源码真的是新版本。
  * 用法：node scripts/check-asar-colors.mjs [app.asar 路径]
  *
  * verify-asar.mjs 只查「文件在不在」，这个查「内容对不对」。
  * 踩过一次坑：改完 client/index.html 忘了重新 build，asar 里还是旧配色，
  * 肉眼看不出，只能直接断言打包后的字节。
+ *
+ * 前端断言只挑字符串字面量。Vite 默认 esbuild 压缩会把函数名和标识符改名，
+ * installDesktopBridge / parseLrcText 这类名字在产物里查不到，
+ * 但 'desktop-lyrics'、'lyric-offset' 这类字面量会原样保留。
  *
  * 不依赖 asar npm 包：当前装的 @electron/asar 3.4.1 在 Windows 上 extractFile
  * 读不到嵌套路径（getNode 用 path.dirname 但 searchNodeFromDirectory 只按
@@ -68,8 +72,11 @@ const jsAll = jsKeys.map(read).join('\n')
 const htmlText = read(htmlKey ?? '')
 // 后端在 asar 里是原样源码，express.json 的 body 上限就在这里
 const backend = Object.keys(files).filter((k) => /^\/src\/.*\.js$/.test(k)).map(read).join('\n')
-// electron 主进程同样是原样源码：托盘图标怎么读、窗口底色是什么都在这
-const electron = Object.keys(files).filter((k) => /^\/electron\/.*\.js$/.test(k)).map(read).join('\n')
+// electron 主进程 + preload 同样是原样源码。preload 是 .cjs（沙箱要求的 CJS），
+// 只 glob .js 会把它漏掉，preload 桥的内容就验不到了。
+const electron = Object.keys(files)
+  .filter((k) => /^\/electron\/.*\.(?:js|cjs)$/.test(k))
+  .map(read).join('\n')
 
 console.log(`asar: ${P}`)
 console.log(`CSS: ${cssKey || '(未找到)'}`)
@@ -95,12 +102,56 @@ const checks = [
   ['前端批量提交只带必要字段', jsAll.includes('durationSec')],
   ['index.html theme-color #121212', htmlText.includes('theme-color" content="#121212"')],
   ['index.html favicon 用网易云红', htmlText.includes('%23ec4141')],
-  ['CSS 无旧粉色 #fb7299', !cssText.includes('#fb7299')],
   ['CSS 无旧紫底 #141419', !cssText.includes('#141419')],
   ['CSS 无旧绿色歌单图标 #3aa675', !cssText.includes('#3aa675')],
-  ['JS 无旧粉色 #fb7299', !jsAll.includes('#fb7299')],
+  // 粉色 #fb7299 现在是 F24 强调色板和 F29 桌面歌词色板里的一个可选项，
+  // 属于刻意保留。约束改成「它只能出现在 JS 色板数组里，不得进 CSS 结构样式」。
+  ['CSS 未把 #fb7299 用于结构样式', !cssText.includes('#fb7299')],
+  ['JS 色板保留粉色 #fb7299（用户可选）', jsAll.includes('#fb7299')],
   ['index.html 无旧紫底', !htmlText.includes('#141419')],
   ['index.html 无旧粉 favicon', !htmlText.includes('%23fb7299')],
+
+  // ---- 本地播放器新增能力：样式层 ----
+  ['CSS 含迷你窗独立窗口样式 .mini-mode', cssText.includes('.mini-mode')],
+  ['CSS 含桌面歌词窗样式 .dl-bar', cssText.includes('.dl-bar')],
+  // 源文件写的是 rgba(18,18,18,0.82)，esbuild 会折成 8 位十六进制 #121212d1
+  // （0.82 × 255 ≈ 209 = 0xD1），所以两种形态都得认
+  ['CSS 桌面歌词控制条半透明底',
+    /rgba\(18,\s*18,\s*18,\s*(?:0\.)?82\)/.test(cssText) || cssText.includes('#121212d1')],
+  ['CSS 歌词校准控件 .lp-cal', cssText.includes('.lp-cal')],
+  ['CSS 拖拽区 webkit-app-region: drag', /webkit-app-region:\s*drag/.test(cssText)],
+  ['CSS 控件区 webkit-app-region: no-drag', /webkit-app-region:\s*no-drag/.test(cssText)],
+  ['CSS 移动端用 100dvh 兜地址栏', cssText.includes('100dvh')],
+  ['CSS 含新中性色阶 #181818/#212121/#2a2a2a', cssText.includes('#181818') && cssText.includes('#212121') && cssText.includes('#2a2a2a')],
+
+  // ---- 本地播放器新增能力：前端行为（只断言字符串字面量，函数名会被压缩掉）----
+  ['JS 含三种窗口模式标识 desktop-lyrics', jsAll.includes('desktop-lyrics')],
+  ['JS 含歌词偏移回流命令 lyric-offset', jsAll.includes('lyric-offset')],
+  ['JS 歌词来源标注「本地文件」（本地 .lrc）', jsAll.includes('本地文件')],
+  ['JS 桌面歌词样式持久化键 desktopLyricsStyle', jsAll.includes('desktopLyricsStyle')],
+  ['JS 设置面板含文件夹监控开关', jsAll.includes('monitorFolders')],
+  ['JS 设置面板含全局快捷键开关', jsAll.includes('globalShortcuts')],
+  ['JS 桌面歌词色板 6 色齐全',
+    ['#ffffff', '#ffd54a', '#67cb6c', '#50a9ff', '#fb7299', '#ec4141'].every((c) => jsAll.includes(c))],
+
+  // ---- 后端 ----
+  ['后端 settings schema 含 monitorFolders（F27）', backend.includes('monitorFolders')],
+  ['后端 settings schema 含 globalShortcuts（F8）', backend.includes('globalShortcuts')],
+  ['后端曲库 repair() 供文件夹监控重扫', backend.includes('repair')],
+
+  // ---- Electron 主进程与 preload ----
+  ['asar 打包了 electron/preload.cjs', Boolean(files['/electron/preload.cjs'])],
+  ['asar 打包了 electron/icons.js', Boolean(files['/electron/icons.js'])],
+  ['主进程引用 preload.cjs（沙箱 preload 必须是 CJS）', electron.includes("preload.cjs")],
+  ['preload 是 CJS 而非 ESM', !/^\s*import\s/.test(read('/electron/preload.cjs') || '')],
+  ['preload 暴露 requestState / pushState', read('/electron/preload.cjs').includes('requestState') && read('/electron/preload.cjs').includes('pushState')],
+  ['主进程注册全局快捷键', electron.includes('globalShortcut') && electron.includes('CommandOrControl+Alt+Space')],
+  ['主进程打开迷你窗与桌面歌词窗', electron.includes('mode=mini') && electron.includes('mode=desktop-lyrics')],
+  ['主进程含 Windows 缩略图工具栏', electron.includes('setThumbnailToolbar')],
+  ['主进程含系统托盘', electron.includes('new Tray') || electron.includes('Tray(')],
+  ['主进程含文件夹监控 fs.watch', electron.includes('fs.watch')],
+  ['主进程含关闭行为分流 closeBehavior', electron.includes('closeBehavior')],
+  ['主进程辅助窗不降频 backgroundThrottling', electron.includes('backgroundThrottling: false')],
 ]
 
 let bad = 0

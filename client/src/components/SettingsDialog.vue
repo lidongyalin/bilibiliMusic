@@ -21,6 +21,8 @@ const open = computed(() => state.settingsOpen)
 const form = reactive({
   closeBehavior: 'ask',
   confirmClose: true,
+  monitorFolders: true,
+  globalShortcuts: true,
   miniWidth: 460,
   miniHeight: 280,
   desktopLyricsWidth: 640,
@@ -53,6 +55,17 @@ function saveGeometry() {
   }).catch(() => {})
 }
 
+/**
+ * 文件夹监控与全局快捷键都只在桌面版生效。
+ * 主进程启动时读一次，所以这里存完提示「重启后生效」而不是假装立刻生效。
+ */
+function saveDesktopToggle() {
+  void api.updateSettings({
+    monitorFolders: form.monitorFolders,
+    globalShortcuts: form.globalShortcuts,
+  }).catch(() => {})
+}
+
 function close() {
   state.settingsOpen = false
 }
@@ -72,6 +85,8 @@ const SHORTCUTS = [
   ['I', '沉浸式播放页'],
   ['Ctrl + ,', '打开设置'],
   ['Esc', '关闭弹窗 / 菜单'],
+  ['Ctrl + Alt + Space', '全局：播放 / 暂停（桌面版）'],
+  ['Ctrl + Alt + ← / →', '全局：上一首 / 下一首（桌面版）'],
 ]
 
 onMounted(() => { void load() })
@@ -210,6 +225,16 @@ function sleepNow(min) {
       <!-- 桌面窗口 -->
       <section class="st-group">
         <h4>桌面窗口（仅桌面版）</h4>
+        <div class="st-row">
+          <span class="st-label">监控音乐文件夹</span>
+          <el-switch :model-value="form.monitorFolders" @change="saveDesktopToggle" />
+          <span class="st-hint">新增、删除、改名的文件自动同步进曲库，重启后生效</span>
+        </div>
+        <div class="st-row">
+          <span class="st-label">全局快捷键</span>
+          <el-switch :model-value="form.globalShortcuts" @change="saveDesktopToggle" />
+          <span class="st-hint">窗口在后台时也能控制播放，重启后生效</span>
+        </div>
         <div class="st-grid">
           <label class="st-field">
             <span>迷你模式宽度</span>

@@ -25,6 +25,16 @@ function write(key, value) {
   }
 }
 
+/** 读回来可能是什么都可能有：夹到 [min,max]，不合法值落回默认 */
+function clampInt(raw, fallback, min, max) {
+  const n = Math.round(Number(raw))
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(min, Math.min(max, n))
+}
+
+/** 桌面歌词的默认外观 */
+const DESKTOP_LYRICS_STYLE_DEFAULT = { size: 22, color: '#ffffff', opacity: 92, outline: 2, lock: false }
+
 const MODES = ['list', 'single', 'shuffle']
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 const SMART_KINDS = ['recently-added', 'most-played', 'recently-played']
@@ -187,6 +197,26 @@ export const prefs = {
     if (!rounded) delete all[bvid]
     else all[bvid] = rounded
     write('lyricOffsets', all)
+  },
+
+  // ---------- 桌面歌词外观（F29） ----------
+  // 桌面歌词窗和主窗同一个 origin，共用 localStorage，
+  // 所以样式不用 IPC 就能互相看见；只有时序偏移要回推给主窗
+  getDesktopLyricsStyle() {
+    const def = DESKTOP_LYRICS_STYLE_DEFAULT
+    const v = read('desktopLyricsStyle', {})
+    if (!v || typeof v !== 'object') return { ...def }
+    return {
+      size: clampInt(v.size, def.size, 12, 48),
+      color: typeof v.color === 'string' ? v.color : def.color,
+      opacity: clampInt(v.opacity, def.opacity, 20, 100),
+      outline: clampInt(v.outline, def.outline, 0, 6),
+      lock: Boolean(v.lock),
+    }
+  },
+  setDesktopLyricsStyle(patch) {
+    const cur = this.getDesktopLyricsStyle()
+    write('desktopLyricsStyle', { ...cur, ...patch })
   },
 
   // ---------- 播放模式：随机/顺序之外还有「是否开启无缝播放」 ----------

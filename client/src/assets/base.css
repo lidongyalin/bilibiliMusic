@@ -2063,3 +2063,280 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 @media (min-width: 1700px) {
   .list-wrap { flex: 0 1 1300px; margin-inline: auto; }
 }
+
+/* ---------- 迷你窗（F21） ----------
+   独立无边框窗口：靠 -webkit-app-region: drag 拖动，按钮区用 no-drag 接住点击 */
+.mini-mode body,
+.dl-mode body,
+.dl-mode { background: transparent; }
+
+.mini {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.mini-drag {
+  flex: none;
+  height: 14px;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.mini-body {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 4px;
+}
+.mini-cover {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--bg-elev-2);
+  padding: 0;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.mini-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini-cover-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: var(--text-faint);
+}
+.mini-cover-pulse {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.mini-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.mini-name {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.mini-name:hover { color: var(--accent); }
+.mini-artist {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.mini-progress {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 0;
+}
+.mini-progress-bar {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-elev-2);
+  overflow: hidden;
+}
+.mini-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s linear;
+}
+.mini-time {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.mini-controls {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 12px 12px;
+  -webkit-app-region: no-drag;
+}
+.mini-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-elev-2);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+.mini-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.mini-play {
+  width: 38px;
+  height: 38px;
+  background: var(--accent);
+  color: #fff;
+}
+.mini-play:hover { background: var(--accent-hover); color: #fff; }
+
+/* ---------- 桌面歌词窗（F21/F29） ----------
+   透明无边框置顶。正文居中，控制条悬停才展开；
+   锁定时控制条常显（否则没有解锁入口），但只留锁图标 */
+.dl {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
+}
+.dl-lyrics {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  overflow: hidden;
+}
+.dl-line {
+  max-width: 100%;
+  line-height: 1.55;
+  -webkit-app-region: no-drag;
+}
+.dl-line-now {
+  font-weight: 600;
+  transition: color 0.2s, font-size 0.15s, opacity 0.15s;
+}
+.dl-line-next {
+  font-size: 14px;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+.dl-line-prev {
+  font-size: 14px;
+  color: var(--text-faint);
+  opacity: 0.5;
+}
+.dl-none {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.dl-none-title { font-size: 18px; color: var(--text-dim); }
+.dl-none-hint { font-size: 12px; color: var(--text-faint); }
+
+.dl-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(18, 18, 18, 0.82);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity 0.18s;
+  -webkit-app-region: no-drag;
+}
+.dl:hover .dl-bar,
+.dl.is-locked .dl-bar { opacity: 1; }
+
+.dl-lock {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 7px;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+}
+.dl-lock.is-on { background: var(--accent-soft); color: var(--accent); }
+
+.dl-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.dl.is-locked .dl-controls { display: none; }
+
+.dl-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.dl-field input[type='range'] {
+  width: 62px;
+  height: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.dl-field em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: right;
+  color: var(--text-faint);
+}
+.dl-colors { display: flex; gap: 4px; }
+.dl-swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+}
+.dl-swatch.is-on {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent-soft), 0 0 0 3px var(--accent);
+}
+.dl-offset {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
