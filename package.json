@@ -1,6 +1,6 @@
 {
   "name": "bilibili-music-player",
-  "version": "1.4.1",
+  "version": "1.5.3",
   "description": "本地运行的 B 站音乐播放器：搜索、在线流播放、收藏、歌单",
   "author": "bilibili-music-player (local use only)",
   "type": "module",
@@ -17,6 +17,8 @@
     "setup": "npm install && npm run build",
     "test": "node scripts/test-history.mjs && node scripts/test-lyrics.mjs && node scripts/test-lyrics-multisource.mjs && node scripts/test-lyric-lines.mjs && node scripts/test-search-response.mjs && node scripts/test-search-cache.mjs && node scripts/test-playlists.mjs",
     "icon": "node scripts/make-icon.mjs",
+    "verify:asar": "node scripts/verify-asar.mjs",
+    "verify:colors": "node scripts/check-asar-colors.mjs",
     "electron": "npm run build && electron electron/main.js",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
@@ -53,6 +55,16 @@
       "src/**/*",
       "electron/**/*",
       "client/dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "build/icon.ico"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "build/icon.png"
+      }
     ],
     "win": {
       "icon": "build/icon.ico",

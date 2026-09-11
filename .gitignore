@@ -14,6 +14,7 @@ dist
 .qa
 .tmp
 .zcode
+.workbuddy
 .probe
 dist-ssr
 # 构建前备份的旧产物（npm run build 会留一份），22MB 纯生成物

@@ -118,7 +118,10 @@ export function createRouter() {
     const body = req.body || {};
     const updated = await playlists.rename(req.params.id, body.name);
     if (!updated) { res.status(404).json({ error: '歌单不存在' }); return; }
-    res.json({ ok: true, playlist: updated });
+    // store 层返回的是 { playlist, oldName }，这里必须取 .playlist 再包一层。
+    // 直接返回 updated 会变成 { playlist: { playlist: {...} } }，前端解构到的 name
+    // 是 undefined，侧栏歌单名会空掉、详情页标题退回「歌单」，刷新才恢复。
+    res.json({ ok: true, playlist: updated.playlist, oldName: updated.oldName });
   }));
 
   /** 删除歌单 */

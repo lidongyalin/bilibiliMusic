@@ -155,8 +155,65 @@ const reachedEnd = computed(
 
 const PRELOAD_PX = 360
 
+// ---------- 虚拟滚动 ----------
+//
+// 不挂满整个列表。500 首歌单一次挂 500 行会变成一个 5 秒级的单块长任务
+// （每行带一个 el-dropdown 和 5~6 个 el-icon，实测 23k DOM 节点、主线程阻塞 5.14s），
+// 用户点一下歌单要等半分钟才有反应。这里按滚动位置只挂可见区间 + 上下缓冲区。
+//
+// 滚动容器仍然是 .list-scroll，所以触底加载的哨兵和 IntersectionObserver 完全不用改；
+// 上下两块占位撑起总高度，scrollHeight 和哨兵位置都还是对的。
+//
+// 行高用运行时测量而不是在 CSS 里再写一份常量：各断点 padding 和封面尺寸不同
+// （桌面 68 / 手机 56 / 窄屏 54 / 横屏矮屏 48），写死容易和 CSS 漂移。
+// 行高是确定的——标题和作者都是 nowrap + ellipsis，不会换行撑高。
+
+const ROW_H_DEFAULT = 68
+const BUFFER_ROWS = 8
+
+const rowH = ref(ROW_H_DEFAULT)
+const startIdx = ref(0)
+const endIdx = ref(20)
+
+function measureRowH() {
+  const el = scrollEl.value?.querySelector(".song-row")
+  if (!el) return rowH.value
+  // offsetHeight 是整数且带浏览器缓存，滚动时反复读不会强制重排。
+  const h = el.offsetHeight
+  if (h > 0 && h !== rowH.value) rowH.value = h
+  return rowH.value
+}
+
+function recomputeWindow() {
+  const el = scrollEl.value
+  const n = rows.value.length
+  if (!el || !n) {
+    startIdx.value = 0
+    endIdx.value = 0
+    return
+  }
+  // 每次都量一遍行高：断点切换是靠 resize 事件触发的，事件万一漏了（比如某些内嵌
+  // webview 不发），这里会在下一次滚动时自愈，不至于让占位块一直用旧的 68px。
+  const h = measureRowH()
+  const top = el.scrollTop
+  startIdx.value = Math.max(0, Math.floor(top / h) - BUFFER_ROWS)
+  endIdx.value = Math.min(n, Math.ceil((top + el.clientHeight) / h) + BUFFER_ROWS)
+}
+
+const visibleRows = computed(() => rows.value.slice(startIdx.value, endIdx.value))
+const topSpacer = computed(() => startIdx.value * rowH.value)
+const bottomSpacer = computed(
+  () => Math.max(0, (rows.value.length - endIdx.value) * rowH.value)
+)
+
+function handleScroll() {
+  checkLoad()
+  recomputeWindow()
+}
+
 function resetScroll() {
   scrollEl.value?.scrollTo({ top: 0 })
+  recomputeWindow()
 }
 
 function checkLoad() {
@@ -166,23 +223,30 @@ function checkLoad() {
   if (gap < PRELOAD_PX) loadMore()
 }
 
+function handleResize() {
+  recomputeWindow()
+}
+
 onMounted(() => {
   // 哨兵始终挂在 DOM 上（不需要时 v-show 隐藏），避免 observer 反复 attach/detach。
   // rootMargin 提前触发，等用户滚到底部时下一页通常已经拿到了。
-  if (typeof IntersectionObserver === 'function') {
+  if (typeof IntersectionObserver === "function") {
     observer = new IntersectionObserver(
       () => checkLoad(),
       { root: scrollEl.value, rootMargin: `0px 0px ${PRELOAD_PX}px 0px` }
     )
     if (sentinel.value) observer.observe(sentinel.value)
   }
-  scrollEl.value?.addEventListener('scroll', checkLoad, { passive: true })
+  scrollEl.value?.addEventListener("scroll", handleScroll, { passive: true })
+  window.addEventListener("resize", handleResize)
+  recomputeWindow()
 })
 
 onBeforeUnmount(() => {
   observer?.disconnect()
   observer = null
-  scrollEl.value?.removeEventListener('scroll', checkLoad)
+  scrollEl.value?.removeEventListener("scroll", handleScroll)
+  window.removeEventListener("resize", handleResize)
 })
 
 watch(
@@ -199,7 +263,15 @@ watch(
   ([loading]) => {
     if (!loading && isSearchView.value) checkLoad()
   },
-  { flush: 'post' }
+  { flush: "post" }
+)
+
+// 数据变了要重算窗口：换视图 / 加页 / 批量加入都会改列表。
+// post 保证 DOM 已经渲染，recomputeWindow 才能量到真实行高。
+watch(
+  () => rows.value.length,
+  () => recomputeWindow(),
+  { flush: "post" }
 )
 
 watch(
@@ -207,8 +279,8 @@ watch(
   (view) => {
     resetScroll()
     exitSelectMode()
-    if (view === 'favorites') void refreshFavorites()
-    if (view === 'playlist') void refreshPlaylists()
+    if (view === "favorites") void refreshFavorites()
+    if (view === "playlist") void refreshPlaylists()
   }
 )
 </script>
@@ -236,10 +308,10 @@ watch(
       </div>
     </div>
 
-    <!-- 歌单详情头：模仿网易云的歌单封面 + 名字 + 曲数那一块 -->
+    <!-- 歌单详情头：网易云那套——大封面 + 大字号歌单名 + 一枚红色「播放全部」 -->
     <div v-if="isPlaylistView && !selectMode" class="playlist-header">
       <div class="ph-cover">
-        <Svg :d="ICON_PATHS.music" :size="40" />
+        <Svg :d="ICON_PATHS.music" :size="58" />
       </div>
       <div class="ph-info">
         <h2 class="ph-title">{{ title }}</h2>
@@ -247,12 +319,14 @@ watch(
         <p v-if="state.currentPlaylist" class="ph-updated">
           更新于 {{ formatDate(state.currentPlaylist.updatedAt) }}
         </p>
+        <div class="ph-play-row">
+          <button type="button" class="play-all-btn" title="播放全部" aria-label="播放全部" @click="onPlayAll">
+            <el-icon><VideoPlay /></el-icon>
+          </button>
+          <span class="ph-play-label">播放全部</span>
+        </div>
       </div>
       <div class="ph-actions">
-        <button type="button" class="header-btn" title="播放全部" @click="onPlayAll">
-          <el-icon><VideoPlay /></el-icon>
-          <span>播放全部</span>
-        </button>
         <button type="button" class="header-btn" title="切换播放模式" @click="cycleMode">
           <Svg :d="MODE_ICONS[state.mode]" :size="17" />
         </button>
@@ -281,12 +355,15 @@ watch(
 
     <div ref="scrollEl" class="list-scroll">
       <div class="list-inner">
+        <!-- 上下占位撑起完整列表高度：滚动条长度和触底哨兵的位置都依赖它 -->
+        <div v-if="topSpacer > 0" class="list-spacer" :style="{ height: topSpacer + 'px' }" aria-hidden="true"></div>
+
         <ol class="song-list">
           <SongRow
-            v-for="row in rows"
+            v-for="(row, i) in visibleRows"
             :key="row.song.bvid"
             :song="row.song"
-            :index="row.index"
+            :index="startIdx + i + 1"
             :removable="isPlaylistView"
             :playlist-id="state.currentPlaylistId"
             @play="onPlay"
@@ -294,6 +371,8 @@ watch(
             @remove="onRemove"
           />
         </ol>
+
+        <div v-if="bottomSpacer > 0" class="list-spacer" :style="{ height: bottomSpacer + 'px' }" aria-hidden="true"></div>
 
         <div v-if="showEmpty" class="list-empty">
           <el-empty :description="emptyText" :image-size="76">

@@ -1,21 +1,22 @@
 :root {
-  --bg: #141419;
-  --bg-elev: #1b1b22;
-  --bg-elev-2: #232330;
-  --bg-hover: #2a2a36;
-  --line: #2d2d3a;
-  --text: #f3f3f6;
-  --text-dim: #a5a5b3;
-  --text-faint: #6e6e7d;
-  --accent: #fb7299;
-  --accent-hover: #ff86ab;
-  --accent-soft: rgba(251, 114, 153, 0.14);
-  --accent-glow: rgba(251, 114, 153, 0.4);
-  --ok: #7ee787;
+  /* 网易云那套：纯中性炭黑，不带紫蓝调；强调色是网易云红 #EC4141 */
+  --bg: #121212;
+  --bg-elev: #181818;
+  --bg-elev-2: #212121;
+  --bg-hover: #2a2a2a;
+  --line: #2e2e2e;
+  --text: #efefef;
+  --text-dim: #a0a0a0;
+  --text-faint: #666666;
+  --accent: #ec4141;
+  --accent-hover: #f05656;
+  --accent-soft: rgba(236, 65, 65, 0.13);
+  --accent-glow: rgba(236, 65, 65, 0.42);
+  --ok: #67cb6c;
   --err: #ff7b72;
 
   --radius: 12px;
-  --sidebar-w: 258px;
+  --sidebar-w: 234px;
   --bar-h: 96px;
   --lyric-w: 380px;
 
@@ -142,9 +143,11 @@ button {
 }
 .sidebar .el-menu-item .el-icon { font-size: 18px; margin-right: 11px; }
 .sidebar .el-menu-item:hover { background: var(--bg-hover); color: var(--text); }
+/* 网易云的选中态是「深一档的灰底 + 白字」，不是整块强调色。
+   强调色只落在图标上——整行染红会盖过列表内容，也和网易云的克制不一样。 */
 .sidebar .el-menu-item.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--bg-hover);
+  color: var(--text);
   font-weight: 600;
 }
 .sidebar .el-menu-item.is-active .el-icon { color: var(--accent); }
@@ -157,7 +160,7 @@ button {
   background: var(--bg-elev-2);
   color: var(--text-dim);
 }
-.el-menu-item.is-active .fav-count { background: var(--accent-glow); color: #fff; }
+.el-menu-item.is-active .fav-count { background: var(--accent); color: #fff; }
 
 .sidebar-footer {
   margin-top: auto;
@@ -170,7 +173,8 @@ button {
 
 /* ---------- 侧栏歌单列表 ----------
    歌单多了以后这一段自己滚，别把底部 footer 顶走。
-   条目用绿色渐变圆形图标 + 名字 + 曲数，是网易云那套观感。 */
+   条目是「彩色小方块封面 + 名字 + 曲数」，对应网易云侧栏里歌单封面的观感；
+   颜色走暖色系的红橙渐变，和整体强调色同族。 */
 .playlist-block {
   display: flex;
   flex-direction: column;
@@ -228,7 +232,7 @@ button {
   border-radius: 7px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #3aa675 0%, #2f8f6b 55%, #237a5a 100%);
+  background: linear-gradient(135deg, #f2795c 0%, #e1503c 55%, #c13a2c 100%);
   color: #fff;
   font-size: 15px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -288,14 +292,21 @@ button {
 .list-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .list-inner { padding: 0 12px 14px; }
 
+/* 虚拟滚动的上下占位：只撑高度，不参与任何视觉。总高度不撑起的话，
+   滚动条长度会错，触底加载的哨兵位置也会跟着错。 */
+.list-spacer { flex: none; }
+
 .song-list { list-style: none; margin: 0; padding: 0; }
 
 .song-row {
   display: grid;
-  grid-template-columns: 34px 44px minmax(0, 1fr) 54px 64px 34px;
+  /* 时长和播放量各给足位：播放量最长是「1747.4万播放」，塞不进 64px 会溢出到行外。
+     操作列用 auto，因为里面是 2~3 个 32px 按钮（歌单视图多一个「移除」），
+     写死宽度必然溢出。 */
+  grid-template-columns: 36px 52px minmax(0, 1fr) 52px 92px auto;
   align-items: center;
   gap: 12px;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.13s;
@@ -320,9 +331,9 @@ button {
 
 .song-cover {
   position: relative;
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
+  width: 52px;
+  height: 52px;
+  border-radius: 9px;
   overflow: hidden;
   background: var(--bg-elev-2);
   flex: none;
@@ -339,7 +350,7 @@ button {
   display: grid;
   place-items: center;
   color: var(--text-faint);
-  font-size: 18px;
+  font-size: 21px;
 }
 .cover-mask {
   position: absolute;
@@ -348,7 +359,7 @@ button {
   place-items: center;
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
-  font-size: 19px;
+  font-size: 22px;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -647,42 +658,77 @@ button {
 }
 
 /* ---------- 歌单详情头部 ----------
-   模仿网易云那套：左侧大封面（渐变方块 + 音符），中间名字和曲数，
-   右侧一排操作按钮。封面用渐变色而不是歌单里第一首歌的封面，
-   因为歌单是空的时也要有个稳定的视觉锚点。 */
+   网易云歌单页的招牌：左侧一张大封面当视觉锚点，右边名字用大字号，
+   「播放全部」是一枚红色实心圆。封面走渐变色而不是歌单里第一首歌的封面，
+   歌单是空的时也有一样的形态，不会突然塌掉。 */
 .playlist-header {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 18px 26px 14px;
+  gap: 22px;
+  padding: 22px 26px 20px;
   background:
-    linear-gradient(160deg, rgba(47, 143, 107, 0.16) 0%, rgba(255, 255, 255, 0) 55%);
+    linear-gradient(160deg, rgba(236, 65, 65, 0.16) 0%, rgba(255, 255, 255, 0) 55%);
   border-bottom: 1px solid var(--line);
 }
 .ph-cover {
   flex: none;
-  width: 76px;
-  height: 76px;
-  border-radius: 12px;
+  width: 128px;
+  height: 128px;
+  border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #3aa675 0%, #2f8f6b 55%, #237a5a 100%);
+  background: linear-gradient(135deg, #f2795c 0%, #e1503c 55%, #c13a2c 100%);
   color: #fff;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
 }
-.ph-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ph-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ph-title {
   margin: 0;
-  font-size: 19px;
+  font-size: 24px;
   font-weight: 700;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ph-sub { margin: 0; font-size: 12.5px; color: var(--text-dim); }
-.ph-updated { margin: 0; font-size: 11.5px; color: var(--text-faint); }
-.ph-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.ph-sub { margin: 0; font-size: 13px; color: var(--text-dim); }
+.ph-updated { margin: 0; font-size: 12px; color: var(--text-faint); }
+.ph-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+/* 「播放全部」排在信息列底部，和网易云歌单页的按钮位置一致 */
+.ph-play-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.ph-play-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* 播放全部：网易云那枚红色实心圆 */
+.play-all-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 4px 16px var(--accent-glow);
+  transition: background 0.13s, transform 0.1s;
+}
+.play-all-btn:hover { background: var(--accent-hover); }
+.play-all-btn:active { transform: scale(0.94); }
 
 /* ---------- 列表头部操作区 ---------- */
 .list-header { position: relative; }
@@ -718,7 +764,7 @@ button {
   margin: 0 12px;
   border-radius: 12px;
   background: var(--accent-soft);
-  border: 1px solid rgba(251, 114, 153, 0.22);
+  border: 1px solid rgba(236, 65, 65, 0.22);
 }
 .select-bar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .select-bar-icon {
@@ -744,7 +790,7 @@ button {
   color: var(--accent);
   transition: background 0.13s;
 }
-.select-bar-link:hover { background: rgba(251, 114, 153, 0.18); }
+.select-bar-link:hover { background: rgba(236, 65, 65, 0.18); }
 
 .select-bar-right { display: flex; align-items: center; }
 .select-bar-primary {
@@ -912,12 +958,13 @@ button {
 .play-btn:hover:not(:disabled) { background: var(--accent-hover); color: #fff; }
 .play-btn:disabled { background: var(--bg-elev-2); box-shadow: none; color: var(--text-faint); }
 
+/* 网易云的进度条是通宽的，从左边的曲目信息一直拉到右边的音量，
+   不用 max-width 收着——收窄以后两侧大片空白，和它那种紧凑感差很远 */
 .progress-row {
   display: flex;
   align-items: center;
   gap: 11px;
   width: 100%;
-  max-width: 640px;
 }
 .time {
   font-size: 11.5px;
@@ -976,7 +1023,7 @@ button {
   border-radius: 999px;
   border: 3px solid var(--bg);
 }
-::-webkit-scrollbar-thumb:hover { background: #34343f; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ---------- 响应式 ----------
@@ -988,14 +1035,22 @@ button {
   .player-bar { gap: 16px; padding: 0 14px; }
   .volume-row .el-slider { width: 72px; }
   .list-header { padding-right: 18px; padding-left: 18px; }
+  .playlist-header { gap: 18px; padding: 18px 18px 16px; }
+  .ph-cover { width: 112px; height: 112px; border-radius: 13px; }
+  .ph-title { font-size: 21px; }
 }
 
 /* 平板竖屏：播放数列没必要了，列表内边距收紧 */
 @media (max-width: 900px) {
   :root { --sidebar-w: 188px; }
-  .song-row { grid-template-columns: 30px 40px minmax(0, 1fr) 46px 32px; gap: 10px; }
+  .song-row { grid-template-columns: 30px 40px minmax(0, 1fr) 46px auto; gap: 10px; }
   .song-play-count { display: none; }
   .list-inner { padding: 0 8px 12px; }
+  .playlist-header { gap: 16px; padding: 16px 18px; }
+  .ph-cover { width: 96px; height: 96px; border-radius: 12px; }
+  .ph-cover .stroke-icon,
+  .ph-cover svg { width: 44px; height: 44px; }
+  .ph-title { font-size: 19px; }
 }
 
 /* 手机：侧栏变顶栏、播放条变两行、触达目标放大 */
@@ -1050,7 +1105,7 @@ button {
 
   /* 序号列保留（均衡器与 loading 转圈都在里面），只隐藏其中的数字 */
   .song-row {
-    grid-template-columns: 24px 40px minmax(0, 1fr) 44px 40px;
+    grid-template-columns: 24px 40px minmax(0, 1fr) 44px auto;
     gap: 9px;
     padding: 8px 6px;
   }
@@ -1060,6 +1115,17 @@ button {
   .song-author { font-size: 11.5px; }
   .song-meta { font-size: 11.5px; }
   .row-btn { width: 40px; height: 40px; }
+
+  /* 手机上歌单头的大封面得再让位，不然占掉半屏高度 */
+  .playlist-header { gap: 12px; padding: 12px; align-items: center; }
+  .ph-cover { width: 68px; height: 68px; border-radius: 10px; }
+  .ph-title { font-size: 16px; }
+  .ph-sub { font-size: 11.5px; }
+  .ph-updated { font-size: 11px; }
+  .ph-play-row { margin-top: 4px; gap: 7px; }
+  .play-all-btn { width: 38px; height: 38px; font-size: 16px; }
+  .ph-play-label { font-size: 12px; }
+  .header-btn { height: 32px; padding: 0 8px; }
 
   /* 播放条两行：第一行 封面+静音，第二行 控制+进度。
      轨道高度必须给 auto，否则两行内容会超出 .app-shell 分给它的 96px 被裁掉 */
@@ -1082,7 +1148,9 @@ button {
   .np-author { font-size: 11.5px; }
   .controls-buttons { gap: 2px; }
   .transport-btn { width: 40px; height: 40px; }
-  .play-btn { width: 44px; height: 44px; margin: 0 2px; }
+  /* 播放键必须 ≤42px：它是两行播放条里最高的元素，44px 会把内容（141px）
+     推出 .app-shell 分给播放条的 140.8px 轨道 */
+  .play-btn { width: 42px; height: 42px; font-size: 20px; margin: 0 2px; }
   .mute-btn { width: 40px; height: 40px; }
   .progress-row { max-width: none; gap: 8px; }
   .time { min-width: 32px; font-size: 11px; }
@@ -1119,14 +1187,18 @@ button {
   .sidebar .el-menu-item { padding: 0 8px; }
 }
 
-/* 手机横屏（矮屏）：压扁播放条，把纵向空间让给列表 */
+/* 手机横屏（矮屏）：压扁播放条，把纵向空间让给列表。
+   封面必须一起缩小：列表行里的 .song-cover 在这个断点上仍是 52px，
+   只缩 .np-art 会让播放条内容（68px）超出 .app-shell 分给它的 72px 轨道。 */
 @media (max-height: 500px) and (orientation: landscape) {
   :root { --bar-h: 72px; }
   .player-bar { padding: 0 14px; }
-  .np-art { width: 44px; height: 44px; }
+  .np-art { width: 44px; height: 44px; border-radius: 8px; }
+  .np-art .cover-fallback { font-size: 18px; }
   .play-btn { width: 38px; height: 38px; font-size: 19px; }
   .transport-btn { width: 30px; height: 30px; }
-  .progress-row { max-width: 520px; }
+  .song-row { grid-template-columns: 30px 40px minmax(0, 1fr) 46px auto; gap: 10px; padding: 4px 12px; }
+  .song-cover { width: 40px; height: 40px; border-radius: 7px; }
   .brand-sub { display: none; }
 }
 

@@ -1,6 +1,7 @@
 import './env.js';
 import { BrowserWindow, Menu, Tray, app, dialog, nativeImage, shell } from 'electron';
 import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { createApp } from '../src/createApp.js';
 
 // env.js 必须在第一个位置：它在 config.js 求值前注入 DATA_DIR。
@@ -40,22 +41,55 @@ function quitForReal() {
   app.quit();
 }
 
-function buildTray() {
-  // 托盘图标：复应用图标并缩到 32×32。Windows 托盘偏爱 16/32px，
-  // 直接用 512 原图会被系统压成马赛克。
-  const iconPath = resolve(app.getAppPath(), 'build', 'icon.png');
-  let image = nativeImage.createFromPath(iconPath);
-  if (!image.isEmpty()) image = image.resize({ width: 32, height: 32 });
+/**
+ * 托盘图标加载。候选路径按优先级试，返回第一个能解出内容的 nativeImage。
+ *
+ * 这里有两个独立的坑，实测（Electron 44.3.0 / Win10）：
+ *
+ * 1. 必须用 createFromPath 读**真磁盘文件**。这个环境里 createFromBuffer 和
+ *    createFromDataURL 对所有格式（PNG/ICO/BMP/GIF）都返回空图，连内存里手搓的
+ *    1x1 PNG 都解不出来；PNG 走 createFromPath 同样解不出来。只有 ICO +
+ *    createFromPath 这条路是通的，改任何一环图标都是透明的。
+ *
+ * 2. 图标必须放在 asar 之外。createFromPath 走真实文件路径，不经过 Electron
+ *    补丁过的 fs，asar 内的路径读不到。所以 .ico 用 electron-builder 的
+ *    extraResources 放到 resources/build/，而不是塞进 app.asar。
+ *
+ * 两个条件同时满足才有图标；以前哪个都没满足，托盘上一直是空的。
+ */
+function loadTrayImage(candidates) {
+  for (const p of candidates) {
+    if (!p || !existsSync(p)) continue;
+    const image = nativeImage.createFromPath(p);
+    if (!image.isEmpty()) {
+      return image.resize({ width: 32, height: 32 });
+    }
+  }
+  console.warn('[desktop] 托盘图标加载失败，候选路径都不可用：', candidates.join(', '));
+  return null;
+}
 
+function buildTray() {
+  // 托盘图标：用多尺寸 ICO 缩到 32×32。Windows 托盘偏爱 16/32px，
+  // 直接用 512 原图会被系统压成马赛克。
+  const packaged = resolve(process.resourcesPath ?? '', 'build');
+  const dev = resolve(app.getAppPath(), 'build');
+  const image = loadTrayImage([
+    resolve(packaged, 'icon.ico'),
+    resolve(packaged, 'icon.png'),
+    resolve(dev, 'icon.ico'),
+    resolve(dev, 'icon.png'),
+  ]);
+  // 图标加载失败就不建托盘：图标空着只会多出一个看不见的占位，
+  // 而且 window-all-closed 里的 !tray 判断会让应用退不掉。
+  if (!image) return;
   tray = new Tray(image);
   tray.setToolTip(TITLE);
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: '显示主窗口', click: () => showWindow() },
-      { type: 'separator' },
-      { label: '退出', click: () => quitForReal() },
-    ])
-  );
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示主窗口', click: () => showWindow() },
+    { type: 'separator' },
+    { label: '退出', click: () => quitForReal() },
+  ]));
 
   // 单击托盘直接唤出窗口，比右键再点菜单快一步
   tray.on('click', () => showWindow());
@@ -68,8 +102,8 @@ function openWindow(url) {
     minWidth: 960,
     minHeight: 600,
     title: TITLE,
-    // 与页面 <meta name="theme-color"> 一致，避免白屏闪烁
-    backgroundColor: '#141419',
+    // 与页面 <meta name="theme-color">、--bg 三者一致，避免白屏闪烁
+    backgroundColor: '#121212',
     autoHideMenuBar: true,
     webPreferences: {
       // 渲染进程完全不碰 Node：所有数据都走 /api
@@ -134,7 +168,9 @@ async function askCloseAction() {
     cancelId: 1,
     noLink: true,
   });
-  if (res.response === 1) {
+  if (res.response === 1 || !tray) {
+    // 没建成托盘时不能走「最小化到托盘」：窗口 hide 掉后没有托盘可唤回，
+    // 也没有可见的退出入口，应用会永远挂在后台。这种情况下直接退出。
     quitForReal();
   } else {
     hideToTray();

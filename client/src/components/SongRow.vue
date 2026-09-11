@@ -86,7 +86,11 @@ function onAddToPlaylist(id) {
     </span>
 
     <div class="song-cover">
-      <el-image v-if="song.cover" :src="song.cover" fit="cover" lazy>
+      <!-- 不用 el-image 的 lazy。它靠 getScrollContainer 自己找滚动根，而那个函数把
+           overflow: hidden 也算滚动容器——列表里每个封面都被自己的 .el-image 当成根，
+           观察目标和根是同一个，实测 500 行里只有 9 个触发过，往下滚再也没加载。
+           列表已经虚拟化了，一屏最多挂二十几行，直接 eager 加载就行。 -->
+      <el-image v-if="song.cover" :src="song.cover" fit="cover">
         <template #error>
           <span class="cover-fallback"><el-icon><Film /></el-icon></span>
         </template>
