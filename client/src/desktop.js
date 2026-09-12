@@ -50,6 +50,15 @@ export function onMediaState(handler) {
 }
 
 /**
+ * 桌面歌词窗订阅「光标在不在本窗范围内」。主进程按固定周期用真实系统光标
+ * 位置算好推过来——渲染进程自己的 mouseenter/mouseleave 在整窗拖拽区上
+ * 不可靠，原因写在 DesktopLyrics.vue 的悬停面板那节。
+ */
+export function onCursorInside(handler) {
+  return window.desktop?.onCursorInside(handler)
+}
+
+/**
  * state.lyrics 是响应式 Proxy。ipcRenderer.send 走结构化克隆，
  * Proxy 不在其中——直接塞进去每次都抛 "An object could not be cloned"，
  * 状态从上线起就没推出去过（托盘提示、迷你窗、桌面歌词全在挨饿）。

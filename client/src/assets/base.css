@@ -2396,12 +2396,14 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   background-position: center;
   filter: blur(30px) saturate(1.25);
   opacity: 0.62;
+  pointer-events: none;
 }
 /* 压暗层：无论封面亮暗，前景浅色文字都有足够对比 */
 .mini-shade {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg, rgba(10, 10, 14, 0.42) 0%, rgba(10, 10, 14, 0.84) 100%);
+  pointer-events: none;
 }
 /* 关闭按钮浮在右上角。窗口无边框又不在任务栏，没有这个 ×
    只能去托盘菜单里翻「关闭迷你窗」，很多人找不到出口 */
@@ -2409,13 +2411,14 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   position: absolute;
   top: 5px;
   right: 5px;
-  z-index: 3;
+  z-index: 6;
   display: grid;
   place-items: center;
   width: 24px;
   height: 20px;
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.5);
+  pointer-events: auto;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -2470,6 +2473,9 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* 给右上角关闭按钮让出空间：标题文字不伸到 x 的关闭区，
+     否则点在角落会命中标题（打开主窗口）而不是关闭迷你窗 */
+  padding-right: 28px;
 }
 .mini-name {
   display: block;
@@ -2578,9 +2584,17 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   app-region: drag;
   transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
-.dl:hover {
+/* 悬停态由 JS 打类控制，不吃 CSS :hover——原因写在 DesktopLyrics.vue 的
+   onEnter/onLeave：透明置顶窗 + 整窗拖拽区下 :hover 会抖，背景跟着闪 */
+.dl.is-hover {
   background: rgba(8, 8, 10, 0.66);
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+}
+/* 锁定时整窗不可拖动：把根拖拽区关掉，只剩 no-drag 的锁定按钮可点。
+   配合 JS 里 showPanel 在锁定时直接 return，鼠标移到窗上也不会再浮出背景面板 */
+.dl.is-locked {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* 关闭按钮：右上角常显，不进悬停门。窗口透明无边框，× 浮在桌面上，
@@ -2603,6 +2617,8 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   app-region: no-drag;
 }
 .dl-close:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+/* 锁定态只保留锁定按钮可点：关闭按钮隐藏且不吃点击 */
+.dl.is-locked .dl-close { opacity: 0; pointer-events: none; }
 
 /* 歌名行：歌名（点回主窗）+ 锁定。悬停出现；锁定时常显，
    否则锁了就没有解锁入口。关闭按钮单独钉在右上角，不在这行里 */
@@ -2621,23 +2637,8 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   pointer-events: none;
   transition: opacity 0.18s;
 }
-.dl:hover .dl-head,
+.dl.is-hover .dl-head,
 .dl.is-locked .dl-head { opacity: 1; pointer-events: auto; }
-.dl-song {
-  flex: 1;
-  min-width: 0;
-  padding: 3px 7px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.55);
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-.dl-song:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 .dl-iconbtn {
   flex: none;
   width: 24px;
@@ -2704,7 +2705,7 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
-.dl:hover .dl-controls { opacity: 1; pointer-events: auto; }
+.dl.is-hover .dl-controls { opacity: 1; pointer-events: auto; }
 .dl.is-locked .dl-controls { display: none; }
 
 .dl-field {

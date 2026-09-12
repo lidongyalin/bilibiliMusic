@@ -1,6 +1,6 @@
 <script>
 import { computed, defineComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { onMediaState, requestState, sendCommand } from './desktop.js'
+import { onCursorInside, onMediaState, requestState, sendCommand } from './desktop.js'
 import { currentLineIndex } from './lyric-lines.js'
 import { prefs } from './prefs.js'
 
@@ -81,7 +81,56 @@ export default defineComponent({
       sendCommand('lyric-offset', { bvid: s.value.bvid, offset })
     }
 
+    // ---------- 悬停面板 ----------
+    //
+    // 面板的点亮不能只依赖渲染进程的 mouseenter/mouseleave。这个窗是
+    // 透明 + 无边框 + 置顶 + 整窗 -webkit-app-region: drag，指针压在拖拽区上时
+    // 鼠标事件能否稳定送到渲染进程取决于浏览器进程的命中处理，会漏；
+    // .dl-head / .dl-controls 悬停时又把 pointer-events 从 none 切成 auto，
+    // 命中目标一变，父级 .dl 还会收到虚假的 mouseleave。两条叠加就是
+    // 「背景只在移入瞬间闪一下」。
+    //
+    // 权威信号放到主进程：按固定周期取真实系统光标位置和窗口边界比较，
+    // 跟渲染进程收不收得到鼠标事件毫无关系。渲染进程的鼠标事件只当快速通道，
+    // 让点亮不等下一轮轮询；收起一律走延迟缓冲，轮询晚一拍也不会把面板抖掉。
+    const isHover = ref(false)
+    let leaveTimer = null
+    let offCursor = null
+
+    // 主进程每 100ms 报一次。缓冲给到 350ms：报「在外面」之后还有两三轮
+    // 机会在缓冲到期前报回「在里面」，一次漏测不会把面板抖掉。
+    const LEAVE_DELAY = 350
+
+    function showPanel() {
+      // 锁定时整窗进入「只读」状态：不点亮面板、不显示背景，
+      // 只有锁定按钮（锁定态常显）还能点，避免误触拖动 / 点击 / 滚轮
+      if (style.lock) return
+      if (leaveTimer) {
+        clearTimeout(leaveTimer)
+        leaveTimer = null
+      }
+      isHover.value = true
+    }
+
+    function scheduleHide() {
+      // 已经在倒计时就不要重置：轮询每 100ms 报一次「在外面」，每次都重排的话
+      // 缓冲永远到不了期，面板就永远收不起来。
+      if (leaveTimer) return
+      leaveTimer = setTimeout(() => {
+        leaveTimer = null
+        isHover.value = false
+      }, LEAVE_DELAY)
+    }
+
+    /** 主进程光标轮询的结果：光标在不在歌词窗范围内 */
+    function onCursor({ inside }) {
+      if (inside) showPanel()
+      else scheduleHide()
+    }
+
     function onWheel(e) {
+      // 滚轮同样是「指针还在窗里」的证据，先撤销收起计时再处理
+      showPanel()
       // 锁定的意思是防误触：滚轮、点击都不响应
       if (style.lock) return
       e.preventDefault()
@@ -99,6 +148,7 @@ export default defineComponent({
       stop = onMediaState((snap) => {
         s.value = { ...s.value, ...(snap || {}) }
       })
+      offCursor = onCursorInside(onCursor)
 
       const el = rootEl.value
       if (el) el.addEventListener('wheel', onWheel, { passive: false })
@@ -106,6 +156,8 @@ export default defineComponent({
 
     onBeforeUnmount(() => {
       if (stop) stop()
+      if (offCursor) offCursor()
+      if (leaveTimer) clearTimeout(leaveTimer)
       const el = rootEl.value
       if (el) el.removeEventListener('wheel', onWheel)
     })
@@ -114,6 +166,9 @@ export default defineComponent({
       s,
       style,
       rootEl,
+      isHover,
+      showPanel,
+      scheduleHide,
       COLORS,
       lines,
       idx,
@@ -133,7 +188,11 @@ export default defineComponent({
   <div
     ref="rootEl"
     class="dl"
-    :class="{ 'is-locked': style.lock, 'is-empty': !current }"
+    :class="{ 'is-hover': isHover, 'is-locked': style.lock, 'is-empty': !current }"
+    @mouseenter="showPanel"
+    @mousemove="showPanel"
+    @mouseover="showPanel"
+    @mouseleave="scheduleHide"
   >
     <!-- 关闭按钮：右上角常显，不跟悬停走。窗口无边框也不进任务栏，
          藏进悬停行里用户只能去托盘翻「关闭桌面歌词」，很多人找不到出口 -->
@@ -149,18 +208,10 @@ export default defineComponent({
       </svg>
     </button>
 
-    <!-- 歌名行：悬停出现（锁定时常显，否则没有解锁入口）。
-         点歌名回主窗；锁定在右侧。整窗其余部分按住即拖动 -->
+    <!-- 顶栏：只保留锁定按钮（悬停出现，锁定时常显）。
+         去掉了原来的歌名行——桌面歌词只显示歌词本身，顶上不再有歌名。
+         整窗其余部分按住即拖动；锁定时根拖拽区被关掉，只有这个按钮可点 -->
     <div class="dl-head">
-      <button
-        type="button"
-        class="dl-song"
-        :title="`${s.title || '未在播放'} · 点击打开主窗口`"
-        @click="sendCommand('show-main')"
-      >
-        {{ s.title || '未在播放' }}
-      </button>
-
       <button
         type="button"
         class="dl-iconbtn"

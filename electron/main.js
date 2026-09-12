@@ -345,6 +345,59 @@ function auxPosition(w, h) {
   }
 }
 
+/** 把值夹到 [min,max]，非法时落回默认 */
+function clampInt(v, fallback, min, max) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : fallback;
+}
+
+/**
+ * 窗口位置记忆（F21 细节）：打开迷你窗 / 桌面歌词窗时优先用上次记住的位置；
+ * 没记过（0/0）或读出来非法时退回默认右上角。记下来的位置会先夹到所在屏幕的
+ * 可视工作区内，避免窗口被拖到屏幕外再也拖不回来。
+ */
+function savedWindowPosition(kind, s, w, h) {
+  const x = Number(s[`${kind}X`]);
+  const y = Number(s[`${kind}Y`]);
+  if (Number.isFinite(x) && Number.isFinite(y) && (x !== 0 || y !== 0)) {
+    return clampToScreen(x, y, w, h);
+  }
+  return auxPosition(w, h);
+}
+
+/** 把坐标夹到离它最近的屏幕工作区内，至少露出一个角 */
+function clampToScreen(x, y, w, h) {
+  try {
+    const disp = screen.getDisplayNearestPoint({ x, y });
+    const a = disp.workArea;
+    return {
+      x: Math.max(a.x, Math.min(a.x + a.width - w, x)),
+      y: Math.max(a.y, Math.min(a.y + a.height - h, y)),
+    };
+  } catch {
+    return { x, y };
+  }
+}
+
+/** 拖动结束（去抖）后把新位置写进设置；closed 时再兜底存一次 */
+const auxMoveTimers = {};
+const lastAuxPos = { mini: null, lyrics: null };
+function onAuxMove(kind, win) {
+  if (!win || win.isDestroyed()) return;
+  let x = 0;
+  let y = 0;
+  try {
+    [x, y] = win.getPosition();
+  } catch {
+    return;
+  }
+  lastAuxPos[kind] = { x, y };
+  if (auxMoveTimers[kind]) clearTimeout(auxMoveTimers[kind]);
+  auxMoveTimers[kind] = setTimeout(() => {
+    void settings.update({ [`${kind}X`]: x, [`${kind}Y`]: y });
+  }, 300);
+}
+
 async function openMini() {
   if (miniWin && !miniWin.isDestroyed()) {
     miniWin.show();
@@ -353,17 +406,19 @@ async function openMini() {
   }
   const base = getAppUrl();
   if (!base) return;
-  const s = await fetchSettings();
-  const w = s.miniWidth || 460;
-  const h = s.miniHeight || 280;
+  const s = await settings.all();
+  const w = clampInt(s.miniWidth, 460, 320, 900);
+  const h = clampInt(s.miniHeight, 280, 220, 500);
 
   // 透明窗口：迷你窗是一张圆角悬浮卡片，四个角真正透出桌面
   miniWin = auxWindow({ transparent: true });
   miniWin.setContentSize(w, h);
-  const pos = auxPosition(w, h);
+  const pos = savedWindowPosition('mini', s, w, h);
   miniWin.setPosition(pos.x, pos.y);
   miniWin.setMenu(null);
+  miniWin.on('move', () => onAuxMove('mini', miniWin));
   miniWin.on('closed', () => {
+    if (lastAuxPos.mini) void settings.update({ miniX: lastAuxPos.mini.x, miniY: lastAuxPos.mini.y });
     miniWin = null;
     rebuildTrayMenu();
   });
@@ -375,6 +430,38 @@ async function openMini() {
   void miniWin.loadURL(`${base}/index.html?mode=mini`);
 }
 
+/**
+ * 桌面歌词窗的面板点亮不靠渲染进程的 mouseenter/mouseleave——那两条在
+ * 「整窗 -webkit-app-region: drag + 子区 pointer-events 切换」下会漏事件、
+ * 也会虚假触发。改成主进程按固定周期取真实系统光标位置，和窗口边界比较，
+ * 跟渲染进程收不收得到鼠标事件毫无关系。
+ */
+let lyricsCursorTimer = null;
+const LYRICS_CURSOR_INTERVAL = 100;
+
+function stopLyricsCursorPoll() {
+  if (lyricsCursorTimer) {
+    clearInterval(lyricsCursorTimer);
+    lyricsCursorTimer = null;
+  }
+}
+
+function startLyricsCursorPoll() {
+  stopLyricsCursorPoll();
+  lyricsCursorTimer = setInterval(() => {
+    if (!lyricsWin || lyricsWin.isDestroyed()) return stopLyricsCursorPoll();
+    let inside = false;
+    try {
+      const p = screen.getCursorScreenPoint();
+      const b = lyricsWin.getBounds();
+      inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+    } catch {
+      return;
+    }
+    lyricsWin.webContents.send('desktop:cursor-inside', { inside });
+  }, LYRICS_CURSOR_INTERVAL);
+}
+
 async function openLyrics() {
   if (lyricsWin && !lyricsWin.isDestroyed()) {
     lyricsWin.show();
@@ -383,19 +470,23 @@ async function openLyrics() {
   }
   const base = getAppUrl();
   if (!base) return;
-  const s = await fetchSettings();
-  const w = s.desktopLyricsWidth || 640;
-  const h = s.desktopLyricsHeight || 260;
+  const s = await settings.all();
+  const w = clampInt(s.desktopLyricsWidth, 640, 320, 1200);
+  const h = clampInt(s.desktopLyricsHeight, 260, 180, 700);
 
   lyricsWin = auxWindow({ transparent: true });
   lyricsWin.setContentSize(w, h);
-  const pos = auxPosition(w, h);
+  const pos = savedWindowPosition('lyrics', s, w, h);
   lyricsWin.setPosition(pos.x, pos.y);
   lyricsWin.setMenu(null);
+  lyricsWin.on('move', () => onAuxMove('lyrics', lyricsWin));
   lyricsWin.on('closed', () => {
+    if (lastAuxPos.lyrics) void settings.update({ lyricsX: lastAuxPos.lyrics.x, lyricsY: lastAuxPos.lyrics.y });
     lyricsWin = null;
+    stopLyricsCursorPoll();
     rebuildTrayMenu();
   });
+  startLyricsCursorPoll();
   lyricsWin.webContents.on('did-finish-load', () => {
     pushMediaToAux();
     setTimeout(() => pushMediaToAux(), 400);

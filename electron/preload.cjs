@@ -163,6 +163,17 @@ contextBridge.exposeInMainWorld('desktop', {
   },
 
   /**
+   * 桌面歌词窗订阅「光标在不在本窗范围内」。主进程按固定周期用真实系统
+   * 光标位置算好推过来：渲染进程的 mouseenter/mouseleave 在整窗拖拽区上
+   * 会漏、也会虚假触发，不能作为面板点亮的依据。返回一个解绑函数。
+   */
+  onCursorInside(handler) {
+    const listener = (_e, payload) => handler(payload || {});
+    ipcRenderer.on('desktop:cursor-inside', listener);
+    return () => ipcRenderer.removeListener('desktop:cursor-inside', listener);
+  },
+
+  /**
    * 主动要一份当前状态。刚打开的窗口可能赶不上主窗的下一次推送，
    * 先问一次就能避免空白闪一下。
    */

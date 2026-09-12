@@ -24,6 +24,12 @@ const SCHEMA = {
   /** 桌面歌词窗口几何 */
   desktopLyricsWidth: { type: 'int', min: 320, max: 1200, default: 640 },
   desktopLyricsHeight: { type: 'int', min: 180, max: 700, default: 260 },
+  /** 迷你窗记住的位置（像素，相对主屏工作区左上角）。0/0 视为「未记忆」 */
+  miniX: { type: 'int', min: -10000, max: 10000, default: 0 },
+  miniY: { type: 'int', min: -10000, max: 10000, default: 0 },
+  /** 桌面歌词窗记住的位置。0/0 视为「未记忆」 */
+  lyricsX: { type: 'int', min: -10000, max: 10000, default: 0 },
+  lyricsY: { type: 'int', min: -10000, max: 10000, default: 0 },
   /** F27：后台监控曲库文件夹，新增文件自动入库 */
   monitorFolders: { type: 'bool', default: true },
   /** F8：全局快捷键开关；关掉后只保留窗口内的快捷键 */

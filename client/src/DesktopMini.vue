@@ -82,7 +82,15 @@ export default defineComponent({
     ></div>
     <div class="mini-shade" aria-hidden="true"></div>
 
-    <button type="button" class="mini-close" title="关闭迷你窗" aria-label="关闭迷你窗" @click="closeMini">
+    <button
+      type="button"
+      class="mini-close"
+      title="关闭迷你窗"
+      aria-label="关闭迷你窗"
+      @mousedown.stop
+      @mouseup.stop
+      @click.stop="closeMini"
+    >
       <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
         <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
       </svg>
