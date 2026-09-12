@@ -73,22 +73,29 @@ export default defineComponent({
 
 <template>
   <div class="mini">
-    <div class="mini-drag" title="拖动移动窗口">
-      <button type="button" class="mini-close" title="关闭迷你窗" aria-label="关闭迷你窗" @click="closeMini">
-        <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-          <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
-        </svg>
-      </button>
-    </div>
+    <!-- 封面高斯模糊铺满 + 压暗层：整窗拖拽区的底，没有封面时只有压暗层 -->
+    <div
+      v-if="hasCover && s.cover"
+      class="mini-bg"
+      :style="{ backgroundImage: `url(${s.cover})` }"
+      aria-hidden="true"
+    ></div>
+    <div class="mini-shade" aria-hidden="true"></div>
 
-    <div class="mini-body">
+    <button type="button" class="mini-close" title="关闭迷你窗" aria-label="关闭迷你窗" @click="closeMini">
+      <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+        <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
+      </svg>
+    </button>
+
+    <div class="mini-main">
       <button type="button" class="mini-cover" title="打开主窗口" @click="sendCommand('show-main')">
         <img v-if="hasCover && s.cover" :src="s.cover" alt="" @error="onCoverError" />
         <span v-else class="mini-cover-empty">♪</span>
         <span v-if="s.playing" class="mini-cover-pulse" aria-hidden="true"></span>
       </button>
 
-      <div class="mini-text">
+      <div class="mini-meta">
         <button type="button" class="mini-name" :title="s.title || '未在播放'" @click="sendCommand('show-main')">
           {{ s.title || '未在播放' }}
         </button>
@@ -106,7 +113,7 @@ export default defineComponent({
 
     <div class="mini-controls">
       <button type="button" class="mini-btn" title="上一首" aria-label="上一首" @click="sendCommand('prev')">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
           <path fill="currentColor" d="M3 2h1.6v12H3zM13.4 2.2v11.6L4.6 8z" />
         </svg>
       </button>
@@ -118,16 +125,16 @@ export default defineComponent({
         :aria-label="s.playing ? '暂停' : '播放'"
         @click="sendCommand('toggle')"
       >
-        <svg v-if="s.playing" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <svg v-if="s.playing" viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
           <path fill="currentColor" d="M3.5 2h3.2v12H3.5zM9.3 2h3.2v12H9.3z" />
         </svg>
-        <svg v-else viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <svg v-else viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
           <path fill="currentColor" d="M4 2v12l9-6z" />
         </svg>
       </button>
 
       <button type="button" class="mini-btn" title="下一首" aria-label="下一首" @click="sendCommand('next')">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
           <path fill="currentColor" d="M11.4 2h1.6v12h-1.6zM2.6 2.2v11.6L11.4 8z" />
         </svg>
       </button>

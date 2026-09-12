@@ -88,11 +88,6 @@ export default defineComponent({
       shiftOffset(e.deltaY < 0 ? WHEEL_STEP : -WHEEL_STEP)
     }
 
-    function onLineClick(line) {
-      if (style.lock || !line) return
-      sendCommand('seek', { at: line.time + s.value.lyricOffset })
-    }
-
     onMounted(async () => {
       try {
         const snap = await requestState()
@@ -139,36 +134,24 @@ export default defineComponent({
     ref="rootEl"
     class="dl"
     :class="{ 'is-locked': style.lock, 'is-empty': !current }"
-    @click="saveStyle({ lock: !style.lock })"
   >
-    <!-- 歌词正文 -->
-    <div class="dl-lyrics">
-      <template v-if="current">
-        <div class="dl-line dl-line-prev" v-if="nextLine === null && idx > 0">
-          {{ lines[idx - 1].text }}
-        </div>
-        <div class="dl-line dl-line-now" :style="lineStyle">
-          {{ current.text }}
-        </div>
-        <div class="dl-line dl-line-next" v-if="nextLine">
-          {{ nextLine.text }}
-        </div>
-      </template>
-      <div v-else class="dl-none">
-        <span class="dl-none-title">{{ s.title || '未在播放' }}</span>
-        <span class="dl-none-hint">
-          {{ s.lyricStatus === 'loading' ? '正在读取歌词…' : '暂无歌词' }}
-        </span>
-      </div>
-    </div>
-
-    <!-- 控制条：鼠标悬停才展开；锁定时常显，否则没有解锁入口 -->
-    <div class="dl-bar" @click.stop>
+    <!-- 歌名行：悬停出现（锁定时常显，否则没有解锁入口）。
+         点歌名回主窗；锁定和关闭在右侧。整窗其余部分按住即拖动 -->
+    <div class="dl-head">
       <button
         type="button"
-        class="dl-lock"
+        class="dl-song"
+        :title="`${s.title || '未在播放'} · 点击打开主窗口`"
+        @click="sendCommand('show-main')"
+      >
+        {{ s.title || '未在播放' }}
+      </button>
+
+      <button
+        type="button"
+        class="dl-iconbtn"
         :class="{ 'is-on': style.lock }"
-        :title="style.lock ? '已锁定，点击解锁' : '锁定：忽略滚轮与点击'"
+        :title="style.lock ? '已锁定，点击解锁' : '锁定：忽略滚轮与点击误触'"
         :aria-label="style.lock ? '已锁定' : '未锁定'"
         @click.stop="saveStyle({ lock: !style.lock })"
       >
@@ -186,74 +169,96 @@ export default defineComponent({
         </svg>
       </button>
 
-      <div class="dl-controls">
-        <label class="dl-field">
-          <span>字号</span>
-          <input
-            type="range"
-            min="12"
-            max="48"
-            step="1"
-            :value="style.size"
-            @input="saveStyle({ size: Number($event.target.value) })"
-          />
-          <em>{{ style.size }}</em>
-        </label>
+      <button
+        type="button"
+        class="dl-iconbtn"
+        title="关闭桌面歌词"
+        aria-label="关闭桌面歌词"
+        @click.stop="closeLyrics"
+      >
+        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+          <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
+        </svg>
+      </button>
+    </div>
 
-        <label class="dl-field">
-          <span>透明</span>
-          <input
-            type="range"
-            min="20"
-            max="100"
-            step="1"
-            :value="style.opacity"
-            @input="saveStyle({ opacity: Number($event.target.value) })"
-          />
-          <em>{{ style.opacity }}%</em>
-        </label>
-
-        <label class="dl-field">
-          <span>描边</span>
-          <input
-            type="range"
-            min="0"
-            max="6"
-            step="1"
-            :value="style.outline"
-            @input="saveStyle({ outline: Number($event.target.value) })"
-          />
-          <em>{{ style.outline }}</em>
-        </label>
-
-        <div class="dl-colors">
-          <button
-            v-for="c in COLORS"
-            :key="c"
-            type="button"
-            class="dl-swatch"
-            :class="{ 'is-on': style.color === c }"
-            :style="{ background: c }"
-            :title="`颜色 ${c}`"
-            :aria-label="`颜色 ${c}`"
-            @click.stop="saveStyle({ color: c })"
-          ></button>
+    <!-- 歌词正文：按住任意位置都能拖动窗口 -->
+    <div class="dl-lyrics">
+      <template v-if="current">
+        <div class="dl-line dl-line-prev" v-if="nextLine === null && idx > 0">
+          {{ lines[idx - 1].text }}
         </div>
-
-        <span class="dl-offset" :title="`滚轮微调时序，当前偏移 ${offsetText}`">{{ offsetText }}</span>
-
-        <button
-          type="button"
-          class="dl-close"
-          title="关闭桌面歌词"
-          aria-label="关闭桌面歌词"
-          @click.stop="closeLyrics"
-        >
-          <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
-            <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
-          </svg>
-        </button>
+        <div class="dl-line dl-line-now" :style="lineStyle">
+          {{ current.text }}
+        </div>
+        <div class="dl-line dl-line-next" v-if="nextLine">
+          {{ nextLine.text }}
+        </div>
+      </template>
+      <div v-else class="dl-none">
+        <span class="dl-none-mark" aria-hidden="true">♪</span>
+        <span class="dl-none-title">
+          {{ s.lyricStatus === 'loading' ? '正在读取歌词…' : (s.title ? '这首歌暂时没有歌词' : '未在播放') }}
+        </span>
       </div>
+    </div>
+
+    <!-- 调节行：悬停展开；锁定时收起（滑杆本来就不响应） -->
+    <div class="dl-controls">
+      <label class="dl-field">
+        <span>字号</span>
+        <input
+          type="range"
+          min="12"
+          max="48"
+          step="1"
+          :value="style.size"
+          @input="saveStyle({ size: Number($event.target.value) })"
+        />
+        <em>{{ style.size }}</em>
+      </label>
+
+      <label class="dl-field">
+        <span>透明</span>
+        <input
+          type="range"
+          min="20"
+          max="100"
+          step="1"
+          :value="style.opacity"
+          @input="saveStyle({ opacity: Number($event.target.value) })"
+        />
+        <em>{{ style.opacity }}%</em>
+      </label>
+
+      <label class="dl-field">
+        <span>描边</span>
+        <input
+          type="range"
+          min="0"
+          max="6"
+          step="1"
+          :value="style.outline"
+          @input="saveStyle({ outline: Number($event.target.value) })"
+        />
+        <em>{{ style.outline }}</em>
+      </label>
+
+      <div class="dl-colors">
+        <button
+          v-for="c in COLORS"
+          :key="c"
+          type="button"
+          class="dl-swatch"
+          :class="{ 'is-on': style.color === c }"
+          :style="{ background: c }"
+          :title="`颜色 ${c}`"
+          :aria-label="`颜色 ${c}`"
+          @click.stop="saveStyle({ color: c })"
+        ></button>
+      </div>
+
+      <span class="dl-offset" :title="`滚轮微调时序，当前偏移 ${offsetText}`">{{ offsetText }}</span>
     </div>
   </div>
 </template>

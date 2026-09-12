@@ -357,7 +357,8 @@ async function openMini() {
   const w = s.miniWidth || 460;
   const h = s.miniHeight || 280;
 
-  miniWin = auxWindow({ transparent: false });
+  // 透明窗口：迷你窗是一张圆角悬浮卡片，四个角真正透出桌面
+  miniWin = auxWindow({ transparent: true });
   miniWin.setContentSize(w, h);
   const pos = auxPosition(w, h);
   miniWin.setPosition(pos.x, pos.y);

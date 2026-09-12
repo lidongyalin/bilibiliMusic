@@ -234,8 +234,7 @@ html.has-titlebar .lyric-panel { top: var(--titlebar-h); }
 .playlist-block {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  flex: 1;
+  flex: none;
   padding: 0 2px;
 }
 .playlist-head {
@@ -258,11 +257,9 @@ html.has-titlebar .lyric-panel { top: var(--titlebar-h); }
 }
 .playlist-add:hover { background: var(--bg-hover); color: var(--accent); }
 
+/* 桌面端不再各自限高滚动：歌单多了整条侧栏一起滚（侧栏只有一个滚动条），
+   之前每段列表一个 max-height + 自己的滚动条，侧栏看着像拼起来的三块 */
 .playlist-scroll {
-  flex: 1;
-  min-height: 40px;
-  max-height: 210px;
-  overflow-y: auto;
   margin: 0 -4px;
   padding: 0 4px;
 }
@@ -1294,8 +1291,6 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 .select-bar-danger:hover { background: rgba(255, 123, 114, 0.14); }
 
 /* ---------- 曲库分组类型切换（侧栏） ---------- */
-.playlist-block.group-block { flex: 0 0 auto; max-height: 244px; }
-.playlist-block.group-block .playlist-scroll { max-height: 150px; }
 .group-types { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 6px 8px; }
 .group-type {
   flex: 1 1 auto;
@@ -2358,7 +2353,11 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 }
 
 /* ---------- 迷你窗（F21） ----------
-   独立无边框窗口：靠 -webkit-app-region: drag 拖动，按钮区用 no-drag 接住点击。
+   悬浮播放卡片：封面高斯模糊铺满做底、压暗渐变保证文字可读，
+   圆角卡片浮在桌面上（窗口透明，边角是真正的圆角）。
+   整窗都是拖拽区，控件单独 no-drag。
+   配色固定深色浅字：它是浮在桌面上的小部件，不跟应用内深浅主题走；
+   强调色（进度、播放键）仍跟应用的强调色设置。
    类名跟 main.js 的 `${mode}-mode` 严格对齐：mode 是 'mini' / 'desktop-lyrics'，
    之前 CSS 写的是 .dl-mode，跟 desktop-lyrics-mode 对不上，body 的透明
    背景从来没生效过——歌词窗一直是一块不透明的深色底 */
@@ -2367,56 +2366,76 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 .desktop-lyrics-mode { background: transparent; }
 
 .mini {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-elev);
-  border: 1px solid var(--line);
-  border-radius: 12px;
   overflow: hidden;
+  border-radius: 14px;
+  background: #161619;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-}
-.mini-drag {
-  position: relative;
-  flex: none;
-  height: 14px;
+  user-select: none;
+  -webkit-user-select: none;
   -webkit-app-region: drag;
   app-region: drag;
 }
-/* 关闭按钮浮在拖拽条右上角。窗口无边框又不在任务栏，没有这个 ×
+/* 封面模糊背景。inset 负值让模糊边缘不出现在卡片内 */
+.mini-bg {
+  position: absolute;
+  inset: -28px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(30px) saturate(1.25);
+  opacity: 0.62;
+}
+/* 压暗层：无论封面亮暗，前景浅色文字都有足够对比 */
+.mini-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 10, 14, 0.42) 0%, rgba(10, 10, 14, 0.84) 100%);
+}
+/* 关闭按钮浮在右上角。窗口无边框又不在任务栏，没有这个 ×
    只能去托盘菜单里翻「关闭迷你窗」，很多人找不到出口 */
 .mini-close {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 5px;
+  right: 5px;
+  z-index: 3;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 14px;
-  color: var(--text-faint);
+  width: 24px;
+  height: 20px;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.5);
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
-.mini-close:hover { color: var(--text); background: var(--bg-hover); }
-.mini-body {
+.mini-close:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+
+.mini-main {
+  position: relative;
+  z-index: 1;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px 4px;
+  gap: 14px;
+  padding: 18px 16px 6px;
 }
 .mini-cover {
   position: relative;
   flex: none;
-  width: 52px;
-  height: 52px;
+  width: 78px;
+  height: 78px;
   border: none;
-  border-radius: 9px;
+  border-radius: 12px;
   overflow: hidden;
-  background: var(--bg-elev-2);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   padding: 0;
   cursor: pointer;
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 .mini-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mini-cover-empty {
@@ -2424,22 +2443,25 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 22px;
-  color: var(--text-faint);
+  font-size: 26px;
+  color: rgba(255, 255, 255, 0.4);
 }
 .mini-cover-pulse {
   position: absolute;
-  left: 5px;
-  right: 5px;
+  left: 6px;
+  right: 6px;
   bottom: 5px;
   height: 3px;
   border-radius: 2px;
   background: var(--accent);
   box-shadow: 0 0 8px var(--accent-glow);
 }
-.mini-text {
+.mini-meta {
   min-width: 0;
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .mini-name {
   display: block;
@@ -2450,36 +2472,40 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   margin: 0;
   text-align: left;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 650;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 .mini-name:hover { color: var(--accent); }
 .mini-artist {
-  font-size: 11.5px;
-  color: var(--text-dim);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
 }
 .mini-progress {
+  position: relative;
+  z-index: 1;
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px 0;
+  padding: 10px 16px 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
 }
 .mini-progress-bar {
   flex: 1 1 auto;
   height: 4px;
   border-radius: 2px;
-  background: var(--bg-elev-2);
+  background: rgba(255, 255, 255, 0.16);
   overflow: hidden;
 }
 .mini-progress-fill {
@@ -2489,65 +2515,125 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 }
 .mini-time {
   flex: none;
-  font-size: 10px;
-  color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
 .mini-controls {
-  flex: none;
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 8px 12px 12px;
-  -webkit-app-region: no-drag;
+  gap: 26px;
+  padding-bottom: 8px;
 }
 .mini-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border: none;
   border-radius: 50%;
-  background: var(--bg-elev-2);
-  color: var(--text);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   padding: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
-.mini-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.mini-btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
 .mini-play {
-  width: 38px;
-  height: 38px;
+  width: 46px;
+  height: 46px;
   background: var(--accent);
   color: #fff;
+  box-shadow: 0 6px 18px var(--accent-glow);
 }
 .mini-play:hover { background: var(--accent-hover); color: #fff; }
 
 /* ---------- 桌面歌词窗（F21/F29） ----------
-   透明无边框置顶。正文居中，控制条悬停才展开；
-   锁定时控制条常显（否则没有解锁入口），但只留锁图标 */
+   默认完全透明，只有歌词文字浮在桌面上；鼠标放上来，整窗浮出一块
+   圆角黑色半透明面板，歌名行和调节行跟着出现。
+   面板配色固定深色——窗外的桌面什么颜色都有，深色磨砂永远压得住；
+   当前歌词行的颜色 / 透明度 / 描边仍由用户设置控制。
+   整窗都是拖拽区（按住拖位置），只有按钮和滑杆 no-drag。 */
 .dl {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 10px 16px;
+  padding: 8px 16px 12px;
+  border-radius: 14px;
   user-select: none;
   -webkit-user-select: none;
   -webkit-app-region: drag;
+  app-region: drag;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
+.dl:hover {
+  background: rgba(8, 8, 10, 0.66);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+}
+
+/* 歌名行：歌名（点回主窗）+ 锁定 + 关闭。悬停出现；锁定时常显，
+   否则锁了就没有解锁入口 */
+.dl-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  margin-bottom: 2px;
+  opacity: 0;
+  /* 隐藏时必须连点击一起关掉：不然想从窗顶拖动窗口，
+     会点中隐形的「打开主窗口」按钮 */
+  pointer-events: none;
+  transition: opacity 0.18s;
+}
+.dl:hover .dl-head,
+.dl.is-locked .dl-head { opacity: 1; pointer-events: auto; }
+.dl-song {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.dl-song:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.dl-iconbtn {
+  flex: none;
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.dl-iconbtn:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+.dl-iconbtn.is-on { color: var(--accent); }
+
 .dl-lyrics {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 12px;
   text-align: center;
   overflow: hidden;
 }
+/* 歌词行也是拖拽区：按住歌词本身就能拖动窗口 */
 .dl-line {
   max-width: 100%;
-  line-height: 1.55;
-  -webkit-app-region: no-drag;
+  line-height: 1.5;
 }
 .dl-line-now {
   font-weight: 600;
@@ -2555,13 +2641,11 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 }
 .dl-line-next {
   font-size: 14px;
-  color: var(--text-dim);
-  opacity: 0.7;
+  color: rgba(255, 255, 255, 0.55);
 }
 .dl-line-prev {
   font-size: 14px;
-  color: var(--text-faint);
-  opacity: 0.5;
+  color: rgba(255, 255, 255, 0.3);
 }
 .dl-none {
   display: flex;
@@ -2569,63 +2653,26 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   align-items: center;
   gap: 6px;
 }
-.dl-none-title { font-size: 18px; color: var(--text-dim); }
-.dl-none-hint { font-size: 12px; color: var(--text-faint); }
+.dl-none-mark { font-size: 22px; color: rgba(255, 255, 255, 0.3); }
+.dl-none-title { font-size: 15px; color: rgba(255, 255, 255, 0.55); }
 
-.dl-bar {
+/* 调节行：悬停出现，锁定时隐藏（滑杆本来就全不响应） */
+.dl-controls {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border-radius: 10px;
-  background: rgba(18, 18, 18, 0.82);
-  border: 1px solid var(--line);
-  backdrop-filter: blur(10px);
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-top: 8px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.18s;
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
-.dl:hover .dl-bar,
-.dl.is-locked .dl-bar { opacity: 1; }
-
-.dl-lock {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: 7px;
-  background: var(--bg-elev-2);
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 0;
-}
-.dl-lock.is-on { background: var(--accent-soft); color: var(--accent); }
-
-/* 关闭桌面歌词。控制条悬停才出现（锁定时常显），× 放在条尾不碍事 */
-.dl-close {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: 7px;
-  background: var(--bg-elev-2);
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 0;
-}
-.dl-close:hover { background: var(--bg-hover); color: var(--text); }
-
-.dl-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
+.dl:hover .dl-controls { opacity: 1; pointer-events: auto; }
 .dl.is-locked .dl-controls { display: none; }
 
 .dl-field {
@@ -2633,38 +2680,39 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   align-items: center;
   gap: 5px;
   font-size: 10.5px;
-  color: var(--text-dim);
+  color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
 }
 .dl-field input[type='range'] {
-  width: 62px;
+  width: 64px;
   height: 3px;
-  accent-color: var(--accent);
+  accent-color: #fff;
   cursor: pointer;
 }
 .dl-field em {
   font-style: normal;
   font-variant-numeric: tabular-nums;
-  min-width: 28px;
+  min-width: 30px;
   text-align: right;
-  color: var(--text-faint);
+  color: rgba(255, 255, 255, 0.45);
 }
-.dl-colors { display: flex; gap: 4px; }
+.dl-colors { display: flex; gap: 5px; }
 .dl-swatch {
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   cursor: pointer;
   padding: 0;
 }
 .dl-swatch.is-on {
   border-color: #fff;
-  box-shadow: 0 0 0 2px var(--accent-soft), 0 0 0 3px var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.28);
 }
 .dl-offset {
+  margin-left: auto;
   font-size: 10.5px;
-  color: var(--text-faint);
+  color: rgba(255, 255, 255, 0.5);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
