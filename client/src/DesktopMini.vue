@@ -3,6 +3,11 @@ import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onMediaState, requestState, sendCommand } from './desktop.js'
 import { formatTime } from './utils.js'
 
+/** 关掉迷你窗本体（窗口销毁，播放不受影响）。浏览器里没有这条桥，点了没副作用 */
+function closeMini() {
+  window.desktop?.closeMini()
+}
+
 const EMPTY = {
   playing: false,
   bvid: '',
@@ -59,6 +64,7 @@ export default defineComponent({
       hasCover,
       onCoverError,
       sendCommand,
+      closeMini,
       formatTime,
     }
   },
@@ -67,7 +73,13 @@ export default defineComponent({
 
 <template>
   <div class="mini">
-    <div class="mini-drag" title="拖动移动窗口"></div>
+    <div class="mini-drag" title="拖动移动窗口">
+      <button type="button" class="mini-close" title="关闭迷你窗" aria-label="关闭迷你窗" @click="closeMini">
+        <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+          <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
+        </svg>
+      </button>
+    </div>
 
     <div class="mini-body">
       <button type="button" class="mini-cover" title="打开主窗口" @click="sendCommand('show-main')">

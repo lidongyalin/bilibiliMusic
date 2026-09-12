@@ -10,6 +10,7 @@ import QueuePanel from './components/QueuePanel.vue'
 import EqualizerPanel from './components/EqualizerPanel.vue'
 import MetaEditor from './components/MetaEditor.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import CloseDialog from './components/CloseDialog.vue'
 import Immersive from './components/Immersive.vue'
 import { installDesktopBridge } from './desktop.js'
 import { refreshFavorites } from './favorites.js'
@@ -96,6 +97,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <div class="titlebar-strip" aria-hidden="true"></div>
   <div class="app-shell">
     <Sidebar @create-playlist="openCreateDialog" />
     <main class="main-area">
@@ -112,6 +114,8 @@ onBeforeUnmount(() => {
     <EqualizerPanel />
     <MetaEditor />
     <SettingsDialog />
+    <!-- 桌面端点窗口关闭按钮时弹的确认框（替代原生白框，跟主题色） -->
+    <CloseDialog />
     <Immersive />
   </div>
 </template>

@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/createApp.js';
 import { library } from '../src/store/library.js';
+import { settings } from '../src/store/settings.js';
 import { GLYPHS, writeIcon } from './icons.js';
 
 // env.js 必须在第一个位置：它在 config.js 求值前注入 DATA_DIR。
@@ -29,12 +30,32 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // 而且 package.json 里 type:module 会让 .js 被工具链当 ESM 解析
 const PRELOAD = resolve(HERE, 'preload.cjs');
 
-/** 全局快捷键（F8）。Ctrl+Alt 组合避开浏览器与 IME 的常用键位 */
-const SHORTCUTS = {
-  'CommandOrControl+Alt+Space': 'toggle',
-  'CommandOrControl+Alt+Left': 'prev',
-  'CommandOrControl+Alt+Right': 'next',
+/**
+ * 全局快捷键（F8）+ 托盘菜单里的快捷键标注。
+ *
+ * Ctrl+Alt 组合避开浏览器与 IME 的常用键位。托盘右键菜单里的每一项
+ * 都有对应的快捷键：全局注册（任何应用在前台都能按），
+ * 菜单项通过 accelerator 字段把键位显示出来——注册失败的键位
+ * 不显示，避免菜单里标了一个按了没反应的快捷键。
+ *
+ * 迷你模式 / 桌面歌词 / 显示主窗口 / 退出由主进程直接执行；
+ * 播放控制类转发给主窗渲染进程（音源只有那一份）。
+ */
+const ACCELERATORS = {
+  toggle: 'CommandOrControl+Alt+Space',
+  prev: 'CommandOrControl+Alt+Left',
+  next: 'CommandOrControl+Alt+Right',
+  'volume-up': 'CommandOrControl+Alt+Up',
+  'volume-down': 'CommandOrControl+Alt+Down',
+  mute: 'CommandOrControl+Alt+M',
+  mini: 'CommandOrControl+Alt+N',
+  lyrics: 'CommandOrControl+Alt+D',
+  'show-main': 'CommandOrControl+Alt+W',
+  quit: 'CommandOrControl+Alt+Q',
 };
+
+/** 实际注册成功了的快捷键集合。托盘菜单用它决定要不要显示键位 */
+let activeAccelerators = new Set();
 
 let win = null;
 let miniWin = null;
@@ -54,6 +75,22 @@ let thumbIconDir = null;
  * 「这是不是用户明确要求退出」。
  */
 let forcedQuit = false;
+
+/**
+ * 应用内关闭确认框的「等答复」槽位。
+ *
+ * 确认框画在主窗页面里（原生 dialog 没法跟主题色），流程是：
+ * close → 渲染进程弹框 → 用户点按钮 → desktop:close-response 带回答案。
+ * 页面没起来或渲染进程挂掉时靠回执超时/destroyed 事件退回原生对话框，
+ * 保证窗口永远关得掉。
+ */
+let closeAskPending = null;
+
+/** 「页面已收到确认请求」回执的槽位（preload 收到 ask-close 自动发） */
+let closeAckPending = null;
+
+/** 确认流程是否正在走（弹窗到答复之间）。防止连点 × 叠出两层确认框 */
+let closeAsking = false;
 
 /** 播放状态快照。渲染进程推过来，托盘/缩略图栏/迷你窗都看这一份 */
 const media = {
@@ -198,21 +235,27 @@ function formatNowPlaying() {
   return `${media.playing ? '正在播放' : '已暂停'} ${name}${who}${pct}`;
 }
 
+/** 托盘菜单项显示的键位：只有真的注册成功才显示，不然按了没反应是骗人 */
+function menuAccel(cmd) {
+  const accelerator = ACCELERATORS[cmd];
+  return activeAccelerators.has(accelerator) ? accelerator : undefined;
+}
+
 function trayMenuTemplate() {
   return [
-    { label: media.playing ? '暂停' : '播放', click: () => sendCommandToMain('toggle') },
-    { label: '上一首', click: () => sendCommandToMain('prev') },
-    { label: '下一首', click: () => sendCommandToMain('next') },
+    { label: media.playing ? '暂停' : '播放', accelerator: menuAccel('toggle'), click: () => sendCommandToMain('toggle') },
+    { label: '上一首', accelerator: menuAccel('prev'), click: () => sendCommandToMain('prev') },
+    { label: '下一首', accelerator: menuAccel('next'), click: () => sendCommandToMain('next') },
     { type: 'separator' },
-    { label: media.muted ? '取消静音' : '静音', click: () => sendCommandToMain('mute') },
-    { label: '音量 +10%', click: () => sendCommandToMain('volume', { delta: 0.1 }) },
-    { label: '音量 -10%', click: () => sendCommandToMain('volume', { delta: -0.1 }) },
+    { label: media.muted ? '取消静音' : '静音', accelerator: menuAccel('mute'), click: () => sendCommandToMain('mute') },
+    { label: '音量 +10%', accelerator: menuAccel('volume-up'), click: () => sendCommandToMain('volume', { delta: 0.1 }) },
+    { label: '音量 -10%', accelerator: menuAccel('volume-down'), click: () => sendCommandToMain('volume', { delta: -0.1 }) },
     { type: 'separator' },
-    { label: miniWin ? '关闭迷你窗' : '迷你模式', click: () => toggleMini() },
-    { label: lyricsWin ? '关闭桌面歌词' : '桌面歌词', click: () => toggleLyrics() },
+    { label: miniWin ? '关闭迷你窗' : '迷你模式', accelerator: menuAccel('mini'), click: () => toggleMini() },
+    { label: lyricsWin ? '关闭桌面歌词' : '桌面歌词', accelerator: menuAccel('lyrics'), click: () => toggleLyrics() },
     { type: 'separator' },
-    { label: '显示主窗口', click: () => showWindow() },
-    { label: '退出', click: () => quitForReal() },
+    { label: '显示主窗口', accelerator: menuAccel('show-main'), click: () => showWindow() },
+    { label: '退出', accelerator: menuAccel('quit'), click: () => quitForReal() },
   ];
 }
 
@@ -398,13 +441,42 @@ async function fetchSettings() {
 
 function registerGlobalShortcuts(enabled) {
   globalShortcut.unregisterAll();
+  activeAccelerators = new Set();
   if (!enabled) return;
-  for (const [accelerator, cmd] of Object.entries(SHORTCUTS)) {
+  for (const [cmd, accelerator] of Object.entries(ACCELERATORS)) {
     try {
-      globalShortcut.register(accelerator, () => sendCommandToMain(cmd));
+      if (globalShortcut.register(accelerator, () => runShortcut(cmd))) {
+        activeAccelerators.add(accelerator);
+      } else {
+        // 多半是被别的软件占了（比如 Intel 显卡的 Ctrl+Alt+方向键旋转屏幕）。
+        // 不加入 activeAccelerators，托盘菜单里就不会显示这个键位
+        console.warn(`[desktop] 快捷键被占用，未注册 ${accelerator}`);
+      }
     } catch (err) {
       console.warn(`[desktop] 注册快捷键失败 ${accelerator}: ${err.message}`);
     }
+  }
+  // 注册结果会影响菜单里显示的键位；托盘可能已经先建好了，刷一遍
+  if (tray) rebuildTrayMenu();
+}
+
+/** 快捷键与托盘菜单共用的执行入口 */
+function runShortcut(cmd) {
+  switch (cmd) {
+    case 'volume-up':
+      return sendCommandToMain('volume', { delta: 0.1 });
+    case 'volume-down':
+      return sendCommandToMain('volume', { delta: -0.1 });
+    case 'mini':
+      return toggleMini();
+    case 'lyrics':
+      return toggleLyrics();
+    case 'show-main':
+      return showWindow();
+    case 'quit':
+      return quitForReal();
+    default:
+      return sendCommandToMain(cmd);
   }
 }
 
@@ -506,6 +578,24 @@ function registerIpc() {
           mini: Boolean(miniWin && !miniWin.isDestroyed()),
           lyrics: Boolean(lyricsWin && !lyricsWin.isDestroyed()),
         };
+      case 'set-titlebar-overlay': {
+        if (win && !win.isDestroyed() && typeof win.setTitleBarOverlay === 'function') {
+          const opts = {};
+          const arg1 = arg || {};
+          if (typeof arg1.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(arg1.color)) opts.color = arg1.color;
+          if (typeof arg1.symbolColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(arg1.symbolColor)) opts.symbolColor = arg1.symbolColor;
+          if (Number.isFinite(arg1.height)) opts.height = Math.max(20, Math.min(60, Math.round(arg1.height)));
+          if (Object.keys(opts).length) {
+            try {
+              win.setTitleBarOverlay(opts);
+            } catch (err) {
+              // Linux 的部分窗口管理器不支持运行时改 overlay 颜色，忽略即可
+              console.warn(`[desktop] 标题栏配色更新失败：${err.message}`);
+            }
+          }
+        }
+        return null;
+      }
       default:
         return null;
     }
@@ -533,11 +623,24 @@ function registerIpc() {
   ipcMain.on('desktop:lyrics-config', (_event, patch) => {
     if (patch && typeof patch === 'object') sendCommandToMain('lyric-config', patch);
   });
+
+  // 应用内关闭确认框：页面收到请求的回执 + 用户的最终答复。
+  // 没有待处理的提问就忽略（迟到的答复不产生副作用）
+  ipcMain.on('desktop:close-ack', () => {
+    if (closeAckPending) closeAckPending();
+  });
+  ipcMain.on('desktop:close-response', (_event, answer) => {
+    if (closeAskPending) closeAskPending(answer);
+  });
 }
 
 // ---------- 主窗口 ----------
 
 function openWindow(url) {
+  // 标题栏交给 titleBarOverlay：原生窗口控制按钮还在（可拖拽、可最大化、
+  // Aero Snap 都保留），但底色和按钮颜色由渲染端按主题调 setTitleBarOverlay
+  // 改。默认值跟深色主题一致，页面起来后渲染端会立刻同步成实际主题。
+  const wantsOverlay = process.platform === 'win32' || process.platform === 'linux';
   win = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -547,6 +650,12 @@ function openWindow(url) {
     // 与页面 <meta name="theme-color">、--bg 三者一致，避免白屏闪烁
     backgroundColor: '#121212',
     autoHideMenuBar: true,
+    ...(wantsOverlay
+      ? {
+          titleBarStyle: 'hidden',
+          titleBarOverlay: { color: '#121212', symbolColor: '#eaeaea', height: 36 },
+        }
+      : {}),
     webPreferences: {
       // 渲染进程不碰 Node：所有数据走 /api，系统能力走 preload 桥
       contextIsolation: true,
@@ -592,8 +701,18 @@ function openWindow(url) {
       return;
     }
     event.preventDefault();
-    void askCloseAction();
+    // 确认框开着的时候再点 × 不重复弹，避免叠两层
+    if (closeAsking) return;
+    closeAsking = true;
+    void askCloseAction().finally(() => {
+      closeAsking = false;
+    });
   });
+
+  // 注意：这条拦截只覆盖原生关闭路径（× 按钮 / Alt+F4 / 任务栏）。
+  // 页面里调 window.close() 不经过 close 事件，会直接销毁窗口——好在
+  // 前端代码从不调它，真发生了托盘菜单的「退出」仍然能收场，
+  // 所以不值得为堵这个旁路引入 beforeunload 与退出流程的竞态。
 
   win.loadURL(url);
 }
@@ -607,6 +726,14 @@ async function askCloseAction() {
   if (behavior === 'tray') return tray ? hideToTray() : quitForReal();
   if (!confirm) return tray ? hideToTray() : quitForReal();
 
+  // 优先用应用内确认框（跟主题色、可勾选「记住我的选择」）；
+  // 3 秒没有答复（页面没加载完 / 渲染进程挂了）就退回原生对话框。
+  const answer = await askCloseInPage();
+  if (answer) return applyCloseAnswer(answer);
+
+  // 走到兜底说明页面不可靠了；窗口要是已经没了，原生框没有父窗可挂，
+  // 「最小化」也没有意义，直接退出避免留下一个只剩托盘的空壳
+  if (!win || win.isDestroyed()) return quitForReal();
   const res = await dialog.showMessageBox(win, {
     type: 'question',
     title: '关闭窗口',
@@ -625,6 +752,63 @@ async function askCloseAction() {
   } else {
     hideToTray();
   }
+}
+
+/** 把确认框画进主窗页面。返回答复；null 表示页面不可用，调用方走原生兜底 */
+function askCloseInPage() {
+  return new Promise((resolve) => {
+    if (!win || win.isDestroyed()) return resolve(null);
+
+    let settled = false;
+    let ackTimer = null;
+    let answerTimer = null;
+    const wc = win.webContents;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (ackTimer) clearTimeout(ackTimer);
+      if (answerTimer) clearTimeout(answerTimer);
+      try { wc.removeListener('destroyed', onDestroyed); } catch { /* ignore */ }
+      closeAskPending = null;
+      closeAckPending = null;
+      resolve(value);
+    };
+
+    // 渲染进程在等待期间被销毁/崩溃：没人会再答复了，退回原生兜底
+    const onDestroyed = () => finish(null);
+
+    closeAskPending = (answer) => finish(answer || { action: 'dismiss' });
+
+    // 两段式等待：
+    //   1) 2.5s 内等「页面已收到」回执（preload 收到 ask-close 自动发）。
+    //      没回执说明页面没加载完或渲染进程卡死 → 原生兜底；
+    //   2) 回执之后不再限时——用户看着确认框想多久都行，
+    //      以前固定 3s 超时会让原生白框突然叠在主题化弹窗上面。
+    closeAckPending = () => {
+      if (ackTimer) clearTimeout(ackTimer);
+      ackTimer = null;
+      wc.once('destroyed', onDestroyed);
+    };
+    ackTimer = setTimeout(() => finish(null), 2500);
+
+    wc.send('desktop:ask-close', { canTray: Boolean(tray) });
+  });
+}
+
+/** 执行应用内确认框的答复；勾了「记住我的选择」就写进设置，下次不再问 */
+async function applyCloseAnswer(answer) {
+  const action = answer && answer.action;
+  if ((action === 'tray' || action === 'quit') && answer.remember) {
+    try {
+      await settings.update({ closeBehavior: action });
+    } catch (err) {
+      console.warn(`[desktop] 记住关闭行为失败：${err.message}`);
+    }
+  }
+  if (action === 'quit') return quitForReal();
+  if (action === 'tray') return tray ? hideToTray() : quitForReal();
+  // dismiss（点了右上角 × / Esc）：窗口保持打开，什么都不做
 }
 
 function startBackend() {

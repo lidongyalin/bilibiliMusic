@@ -39,6 +39,7 @@ const MODES = ['list', 'single', 'shuffle']
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 const SMART_KINDS = ['recently-added', 'most-played', 'recently-played']
 const SORT_KEYS = ['title', 'author', 'album', 'durationSec', 'addedAt', 'year', 'bitrate']
+const SEARCH_SORT_KEYS = ['default', 'duration', 'title', 'author']
 
 export const prefs = {
   getVolume() {
@@ -180,6 +181,19 @@ export const prefs = {
     return d === 'desc' ? 'desc' : 'asc'
   },
   setSortDir(d) { write('sortDir', d) },
+
+  // ---------- 搜索结果排序（client 端排，记住上次的选择） ----------
+  getSearchSortKey() {
+    const k = read('searchSortKey', 'default')
+    return SEARCH_SORT_KEYS.includes(k) ? k : 'default'
+  },
+  setSearchSortKey(k) { write('searchSortKey', k) },
+
+  getSearchSortDir() {
+    const d = read('searchSortDir', 'desc')
+    return d === 'asc' ? 'asc' : 'desc'
+  },
+  setSearchSortDir(d) { write('searchSortDir', d) },
 
   // ---------- 主题 ----------
   // light / dark / system（跟随系统）

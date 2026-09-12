@@ -25,5 +25,14 @@ const Root = mode === 'mini' ? DesktopMini : mode === 'desktop-lyrics' ? Desktop
 
 // 辅助窗的 html 类：桌面歌词窗要全透明，样式靠这个类去覆盖 body 背景
 if (mode !== 'main') document.documentElement.classList.add(`${mode}-mode`)
+// 主窗且平台支持 titleBarOverlay（Windows / Linux）：页面顶部要给系统窗口
+// 按钮留一条空间。放这里而不是 onMounted，避免首帧内容从 y=0 跳到 y=36
+if (
+  mode === 'main' &&
+  window.desktop &&
+  ['win32', 'linux'].includes(window.desktop.platform)
+) {
+  document.documentElement.classList.add('has-titlebar')
+}
 
 createApp(Root).use(ElementPlus, { locale: zhCn }).mount('#app')

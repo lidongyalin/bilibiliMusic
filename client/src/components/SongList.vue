@@ -32,7 +32,7 @@ import {
 } from '../library.js'
 import { openSmart, openHistory, clearHistory, SMART_KINDS, smartKindLabel } from '../history.js'
 import { playlistMenu } from '../menu.js'
-import { loadMore } from '../search.js'
+import { loadMore, setSearchSort, SEARCH_SORT_OPTIONS } from '../search.js'
 import { refreshFavorites, toggleFavorite } from '../favorites.js'
 import { playSong, cycleMode } from '../player.js'
 import {
@@ -220,6 +220,17 @@ function onHeaderContext(e) {
 function onSort(key) {
   setSort(key)
 }
+
+/** 搜索结果排序：同一个键再点一次反向（跟曲库排序一致的交互） */
+function onSearchSort(key) {
+  setSearchSort(key)
+}
+
+const searchSortLabel = computed(() => {
+  const cur = SEARCH_SORT_OPTIONS.find((o) => o.key === state.searchSortKey)
+  if (!cur || cur.key === 'default') return '默认'
+  return `${cur.label} ${state.searchSortDir === 'asc' ? '↑' : '↓'}`
+})
 
 function backToLibrary() {
   exitDrill()
@@ -537,6 +548,28 @@ watch(
               <el-icon><Check /></el-icon>
               <span>多选</span>
             </button>
+          </template>
+
+          <!-- 搜索结果的排序。只影响已加载的页，鼠标悬停有说明 -->
+          <template v-if="isSearchView && !selectMode && state.songs.length">
+            <el-dropdown trigger="click" @command="onSearchSort">
+              <button type="button" class="lib-sort-btn" title="排序（只作用于已加载的结果，翻页会自动带进来）">
+                <span>排序：</span>
+                <span class="lib-sort-cur">{{ searchSortLabel }}</span>
+                <el-icon><Sort /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-for="o in SEARCH_SORT_OPTIONS" :key="o.key" :command="o.key">
+                    {{ o.label }}
+                    <!-- 默认排序没有方向可言，不画箭头 -->
+                    <span v-if="o.key !== 'default'" class="sort-arrow" :class="{ 'is-asc': state.searchSortDir === 'asc' }">
+                      {{ state.searchSortKey === o.key ? (state.searchSortDir === 'asc' ? '↑' : '↓') : '' }}
+                    </span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
 
           <!-- 曲库专用操作 -->

@@ -105,6 +105,29 @@ function syncThemeColor() {
     'content',
     resolvedTheme() === 'light' ? '#ffffff' : (accent === '#ffffff' ? '#121212' : accent)
   )
+  syncNativeTitlebar()
+}
+
+/**
+ * 桌面端把原生标题栏（窗口控制按钮那条）染成应用同款配色。
+ * 原生标题栏跟的是系统深浅色，应用内切主题它不理会——之前深色应用
+ * 配白标题栏就是这么来的。只有主窗有 titleBarOverlay，辅助窗和浏览器跳过。
+ * 颜色跟 --bg / --text 一致，标题栏和窗口内容连成一体。
+ */
+function syncNativeTitlebar() {
+  if (!window.desktop || !window.desktop.setTitleBarOverlay) return
+  const mode = new URLSearchParams(window.location.search).get('mode')
+  if (mode === 'mini' || mode === 'desktop-lyrics') return
+  const dark = resolvedTheme() === 'dark'
+  try {
+    window.desktop.setTitleBarOverlay({
+      color: dark ? '#121212' : '#ffffff',
+      symbolColor: dark ? '#eaeaea' : '#333333',
+      height: 36,
+    })
+  } catch {
+    // 平台不支持运行时改色（旧 Linux WM），保持默认即可
+  }
 }
 
 function applyTheme(theme = state.theme) {

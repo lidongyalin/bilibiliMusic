@@ -18,6 +18,9 @@
  *   desktop:media-state   主进程 → 迷你窗与桌面歌词窗
  *   desktop:command       双向。辅助窗发命令给主窗，主窗也用它发命令给辅助窗
  *   desktop:lyrics-config 桌面歌词窗的样式与偏移，主窗记进 prefs
+ *   desktop:ask-close     主进程 → 主窗，窗口 close 时的应用内确认请求
+ *   desktop:close-ack     主窗 → 主进程，收到确认请求的回执（页面活着）
+ *   desktop:close-response 主窗 → 主进程，确认框的答复（tray/quit/dismiss + 记住）
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -103,6 +106,32 @@ contextBridge.exposeInMainWorld('desktop', {
   },
   async auxState() {
     return ipcRenderer.invoke('desktop:invoke', 'aux-state');
+  },
+
+  /** 把原生标题栏（窗口控制按钮那条）染成主题色。仅在开了 titleBarOverlay 的窗口有效 */
+  setTitleBarOverlay(opts) {
+    if (opts && typeof opts === 'object') {
+      void ipcRenderer.invoke('desktop:invoke', 'set-titlebar-overlay', opts);
+    }
+  },
+
+  /** 主进程在窗口 close 时发来的确认请求（应用内关闭确认框用）。返回解绑函数 */
+  onAskClose(handler) {
+    const listener = (_e, payload) => {
+      // 收到即回执：告诉主进程「页面活着，弹窗画出来了」，
+      // 主进程于是不再限时，安心等用户点按钮
+      ipcRenderer.send('desktop:close-ack');
+      handler(payload || { canTray: false });
+    };
+    ipcRenderer.on('desktop:ask-close', listener);
+    return () => ipcRenderer.removeListener('desktop:ask-close', listener);
+  },
+
+  /** 关闭确认框的答复：{ action: 'tray' | 'quit' | 'dismiss', remember?: boolean } */
+  respondClose(answer) {
+    if (answer && typeof answer === 'object') {
+      ipcRenderer.send('desktop:close-response', answer);
+    }
   },
 
   /** 主窗推播放状态。内部过滤字段，调用方直接传整份快照 */

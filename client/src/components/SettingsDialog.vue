@@ -87,6 +87,12 @@ const SHORTCUTS = [
   ['Esc', '关闭弹窗 / 菜单'],
   ['Ctrl + Alt + Space', '全局：播放 / 暂停（桌面版）'],
   ['Ctrl + Alt + ← / →', '全局：上一首 / 下一首（桌面版）'],
+  ['Ctrl + Alt + ↑ / ↓', '全局：音量 ±10%（桌面版）'],
+  ['Ctrl + Alt + M', '全局：静音（桌面版）'],
+  ['Ctrl + Alt + N', '全局：迷你模式开关（桌面版）'],
+  ['Ctrl + Alt + D', '全局：桌面歌词开关（桌面版）'],
+  ['Ctrl + Alt + W', '全局：显示主窗口（桌面版）'],
+  ['Ctrl + Alt + Q', '全局：退出程序（桌面版）'],
 ]
 
 onMounted(() => { void load() })
@@ -285,6 +291,11 @@ watch(open, (v) => { if (v) refreshAuxState() })
           <span class="st-label">每次都确认</span>
           <el-switch :model-value="form.confirmClose" @change="onBehaviorChange" />
           <span class="st-hint">仅在「询问我」时有效</span>
+        </div>
+        <div class="st-row">
+          <span class="st-hint">
+            关闭确认框里勾选「记住我的选择」会改写上面的行为；选回「询问我」即可恢复每次询问。
+          </span>
         </div>
       </section>
 

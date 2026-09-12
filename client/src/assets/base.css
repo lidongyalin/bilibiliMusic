@@ -131,6 +131,32 @@ button {
     'player  player';
 }
 
+/*
+  桌面主窗的标题栏（titleBarOverlay）。原生标题条隐藏后，系统窗口按钮
+  （最小化 / 最大化 / 关闭）画在页面右上角，页面顶部要留出一条同高度空间：
+  - .app-shell 整体下移，内容不再钻到窗口按钮底下；
+  - .titlebar-strip 是透明的 -webkit-app-region: drag 拖拽区（按住可移动窗口，
+    双击最大化），由 desktop.js 在主窗挂上 html.has-titlebar 后启用。
+*/
+:root { --titlebar-h: 36px; }
+html.has-titlebar .app-shell { padding-top: var(--titlebar-h); }
+.titlebar-strip { display: none; }
+html.has-titlebar .titlebar-strip {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-h);
+  /* 低于歌词面板(40)和队列面板(3200)：面板开着时仍然整块可点，
+     代价只是面板开着的那几秒不能拖窗口 */
+  z-index: 30;
+  -webkit-app-region: drag;
+}
+/* 右侧面板从窗口顶滑出，不避开会顶进系统窗口按钮底下 */
+html.has-titlebar .queue-mask { padding-top: var(--titlebar-h); }
+html.has-titlebar .lyric-panel { top: var(--titlebar-h); }
+
 /* ---------- 侧栏 ---------- */
 .sidebar {
   grid-area: sidebar;
@@ -2332,10 +2358,13 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
 }
 
 /* ---------- 迷你窗（F21） ----------
-   独立无边框窗口：靠 -webkit-app-region: drag 拖动，按钮区用 no-drag 接住点击 */
-.mini-mode body,
-.dl-mode body,
-.dl-mode { background: transparent; }
+   独立无边框窗口：靠 -webkit-app-region: drag 拖动，按钮区用 no-drag 接住点击。
+   类名跟 main.js 的 `${mode}-mode` 严格对齐：mode 是 'mini' / 'desktop-lyrics'，
+   之前 CSS 写的是 .dl-mode，跟 desktop-lyrics-mode 对不上，body 的透明
+   背景从来没生效过——歌词窗一直是一块不透明的深色底 */
+.mini-mode body { background: transparent; }
+.desktop-lyrics-mode body,
+.desktop-lyrics-mode { background: transparent; }
 
 .mini {
   height: 100%;
@@ -2348,11 +2377,27 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 .mini-drag {
+  position: relative;
   flex: none;
   height: 14px;
   -webkit-app-region: drag;
   app-region: drag;
 }
+/* 关闭按钮浮在拖拽条右上角。窗口无边框又不在任务栏，没有这个 ×
+   只能去托盘菜单里翻「关闭迷你窗」，很多人找不到出口 */
+.mini-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 14px;
+  color: var(--text-faint);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.mini-close:hover { color: var(--text); background: var(--bg-hover); }
 .mini-body {
   flex: none;
   display: flex;
@@ -2558,6 +2603,22 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   padding: 0;
 }
 .dl-lock.is-on { background: var(--accent-soft); color: var(--accent); }
+
+/* 关闭桌面歌词。控制条悬停才出现（锁定时常显），× 放在条尾不碍事 */
+.dl-close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 7px;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+}
+.dl-close:hover { background: var(--bg-hover); color: var(--text); }
 
 .dl-controls {
   display: flex;

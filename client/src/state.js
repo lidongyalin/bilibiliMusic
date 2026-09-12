@@ -19,6 +19,9 @@ export const state = reactive({
   hasMore: false,
   total: 0,
   loading: false,
+  // 搜索结果排序（client 端排，只作用于已加载的页）。default 是 B 站返回的原始顺序
+  searchSortKey: prefs.getSearchSortKey(),
+  searchSortDir: prefs.getSearchSortDir(),
 
   // 收藏
   favorites: [],
@@ -117,6 +120,9 @@ export const state = reactive({
 
   // 重复检测结果（F15）
   duplicates: [],
+
+  // 应用内关闭确认框：null 没开；打开时 { canTray }。由主进程 close 事件触发
+  closeAsk: null,
 })
 
 // 歌单视图用 'playlist'，具体是哪个歌单由 currentPlaylistId 决定。

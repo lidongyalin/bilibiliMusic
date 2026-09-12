@@ -93,3 +93,54 @@ export function loadMore() {
   if (state.loading || !state.hasMore || !state.keyword) return
   runSearch(state.keyword, { page: state.page + 1, append: true })
 }
+
+// ---------- 搜索结果排序 ----------
+//
+// B 站上游已按「播放量从高到低」排好（order=click），所以默认项就是原始顺序，
+// 不再单列一个「播放量」。排序在 client 端做，只作用于已加载的页——
+// 搜索是无限翻页，没加载的页本地没有数据可排，新页进来后列表会自动重排。
+
+export const SEARCH_SORT_OPTIONS = [
+  { key: 'default', label: '默认排序' },
+  { key: 'duration', label: '时长' },
+  { key: 'title', label: '歌名' },
+  { key: 'author', label: 'UP 主' },
+]
+
+/** 每个排序键第一次选中时的方向。再点一次同一个键就反向 */
+const SEARCH_SORT_DEFAULT_DIR = { default: 'desc', duration: 'desc', title: 'asc', author: 'asc' }
+
+export function setSearchSort(key) {
+  if (!SEARCH_SORT_OPTIONS.some((o) => o.key === key)) return
+  if (state.searchSortKey === key) {
+    state.searchSortDir = state.searchSortDir === 'asc' ? 'desc' : 'asc'
+  } else {
+    state.searchSortKey = key
+    state.searchSortDir = SEARCH_SORT_DEFAULT_DIR[key] || 'asc'
+  }
+  prefs.setSearchSortKey(state.searchSortKey)
+  prefs.setSearchSortDir(state.searchSortDir)
+}
+
+/** 排序搜索结果。default 原样返回（连数组都不复制，翻页路径零开销） */
+export function sortedSearch(list) {
+  const key = state.searchSortKey
+  if (key === 'default') return list
+  const dir = state.searchSortDir === 'asc' ? 1 : -1
+  const out = list.slice()
+  out.sort((a, b) => {
+    let d = 0
+    if (key === 'duration') {
+      d = (Number(a.durationSec) || 0) - (Number(b.durationSec) || 0)
+    } else if (key === 'title') {
+      d = String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hans-CN')
+    } else if (key === 'author') {
+      d = String(a.author || '').localeCompare(String(b.author || ''), 'zh-Hans-CN')
+    }
+    // 同值时按 bvid 定序：Array#sort 在各引擎里已稳定，但加上这行
+    // 让「翻页后重排」前后同名条目的相对位置可预期
+    if (d === 0) d = String(a.bvid || '').localeCompare(String(b.bvid || ''))
+    return d * dir
+  })
+  return out
+}

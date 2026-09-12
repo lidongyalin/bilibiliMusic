@@ -49,6 +49,23 @@ export function onMediaState(handler) {
   return window.desktop?.onMediaState(handler)
 }
 
+/**
+ * state.lyrics 是响应式 Proxy。ipcRenderer.send 走结构化克隆，
+ * Proxy 不在其中——直接塞进去每次都抛 "An object could not be cloned"，
+ * 状态从上线起就没推出去过（托盘提示、迷你窗、桌面歌词全在挨饿）。
+ * 拷成纯字段对象；歌词数组只在换歌时整体替换（lyrics.js 里的赋值都是
+ * 整组替换），按引用缓存，进度推送不用每次重建几百行。
+ */
+let lyricsCache = { src: null, plain: [] }
+
+function plainLyrics() {
+  const src = state.lyrics || []
+  if (lyricsCache.src !== src || lyricsCache.plain.length !== src.length) {
+    lyricsCache = { src, plain: src.map((l) => ({ time: l.time, text: l.text })) }
+  }
+  return lyricsCache.plain
+}
+
 /** 主窗 → 外壳的状态快照 */
 function snapshot() {
   return {
@@ -63,7 +80,7 @@ function snapshot() {
     volume: state.volume,
     mode: state.mode,
     speed: state.speed,
-    lyrics: state.lyrics || [],
+    lyrics: plainLyrics(),
     lyricOffset: state.lyricOffset || 0,
     lyricStatus: state.lyricStatus,
   }
@@ -77,6 +94,16 @@ function snapshot() {
  */
 export function installDesktopBridge() {
   if (!isDesktop) return () => {}
+
+  // html.has-titlebar 在 main.js 挂载前就挂好了（避免首帧跳动），这里只挂
+  // 主窗专属的关闭确认监听。迷你窗 / 桌面歌词窗是 frameless 辅助窗，
+  // close 不经过确认流程，也不会收到 ask-close。
+  const offAskClose =
+    renderMode() === 'main' && ['win32', 'linux'].includes(window.desktop.platform)
+      ? window.desktop.onAskClose(({ canTray }) => {
+          state.closeAsk = { canTray: Boolean(canTray) }
+        })
+      : null
 
   const push = () => window.desktop.pushState(snapshot())
 
@@ -135,6 +162,7 @@ export function installDesktopBridge() {
 
   return () => {
     offCommand()
+    offAskClose?.()
     for (const stop of stoppers) stop()
   }
 }

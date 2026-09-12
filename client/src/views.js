@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { prefs } from './prefs.js'
+import { sortedSearch } from './search.js'
 
 /**
  * 视图相关的纯函数：当前视图是哪一种、它的数据列表是什么。
@@ -18,6 +19,9 @@ export function currentView() {
 /** 当前视图对应的曲目列表 */
 export function currentList() {
   const v = currentView()
+  // 搜索视图在这里就排好序：列表展示和「播放全部 / 点击播放」的上下文
+  // 都走 currentList，两处看到的一定是同一个顺序
+  if (v === 'search') return sortedSearch(state.songs)
   if (v === 'favorites') return state.favorites
   if (v === 'playlist') return state.currentPlaylist?.songs || []
   if (v === 'library') return state.library

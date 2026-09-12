@@ -20,6 +20,11 @@ const COLORS = ['#ffffff', '#ffd54a', '#67cb6c', '#50a9ff', '#fb7299', '#ec4141'
 /** 滚轮校准时序的步进。0.25 秒够细，又不至于滑一下偏掉半句 */
 const WHEEL_STEP = 0.25
 
+/** 关掉桌面歌词窗本体。浏览器里没有这条桥，点了没副作用 */
+function closeLyrics() {
+  window.desktop?.closeLyrics()
+}
+
 /**
  * 桌面歌词窗（F21/F29）。
  *
@@ -123,6 +128,7 @@ export default defineComponent({
       lineStyle,
       saveStyle,
       sendCommand,
+      closeLyrics,
     }
   },
 })
@@ -235,6 +241,18 @@ export default defineComponent({
         </div>
 
         <span class="dl-offset" :title="`滚轮微调时序，当前偏移 ${offsetText}`">{{ offsetText }}</span>
+
+        <button
+          type="button"
+          class="dl-close"
+          title="关闭桌面歌词"
+          aria-label="关闭桌面歌词"
+          @click.stop="closeLyrics"
+        >
+          <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+            <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
+          </svg>
+        </button>
       </div>
     </div>
   </div>
