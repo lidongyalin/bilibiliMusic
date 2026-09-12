@@ -88,6 +88,23 @@ contextBridge.exposeInMainWorld('desktop', {
     }
   },
 
+  /** 迷你模式 / 桌面歌词的应用内开关（F21）。设置面板用 */
+  openMini() {
+    void ipcRenderer.invoke('desktop:invoke', 'open-mini');
+  },
+  openLyrics() {
+    void ipcRenderer.invoke('desktop:invoke', 'open-lyrics');
+  },
+  closeMini() {
+    void ipcRenderer.invoke('desktop:invoke', 'close-mini');
+  },
+  closeLyrics() {
+    void ipcRenderer.invoke('desktop:invoke', 'close-lyrics');
+  },
+  async auxState() {
+    return ipcRenderer.invoke('desktop:invoke', 'aux-state');
+  },
+
   /** 主窗推播放状态。内部过滤字段，调用方直接传整份快照 */
   pushState(snapshot) {
     ipcRenderer.send('desktop:push-state', pickState(snapshot));

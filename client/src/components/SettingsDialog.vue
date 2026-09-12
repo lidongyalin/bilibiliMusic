@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api.js'
 import { prefs } from '../prefs.js'
@@ -122,6 +122,36 @@ function onClearLoudness() {
   clearLoudnessData()
   ElMessage.success('已清空学习记录，接下来会重新学习')
 }
+
+// ---------- 迷你模式 / 桌面歌词（F21）的应用内入口 ----------
+// 只有桌面版有 window.desktop；浏览器里按钮置灰，提示走桌面版
+
+const isDesktop = Boolean(window.desktop)
+const miniOpen = ref(false)
+const lyricsOpen = ref(false)
+
+async function refreshAuxState() {
+  const s = await window.desktop?.auxState?.()
+  if (!s) return
+  miniOpen.value = Boolean(s.mini)
+  lyricsOpen.value = Boolean(s.lyrics)
+}
+
+async function toggleMiniMode() {
+  if (miniOpen.value) window.desktop?.closeMini()
+  else window.desktop?.openMini()
+  await new Promise((r) => setTimeout(r, 400))
+  await refreshAuxState()
+}
+
+async function toggleDesktopLyrics() {
+  if (lyricsOpen.value) window.desktop?.closeLyrics()
+  else window.desktop?.openLyrics()
+  await new Promise((r) => setTimeout(r, 400))
+  await refreshAuxState()
+}
+
+watch(open, (v) => { if (v) refreshAuxState() })
 </script>
 
 <template>
@@ -261,6 +291,22 @@ function onClearLoudness() {
       <!-- 桌面窗口 -->
       <section class="st-group">
         <h4>桌面窗口（仅桌面版）</h4>
+        <!-- 迷你模式 / 桌面歌词的开关入口。之前只有托盘菜单里有，
+             浏览器里没有托盘、用户也不会去托盘翻，等于整个功能不可见 -->
+        <div class="st-row">
+          <span class="st-label">迷你模式</span>
+          <button type="button" class="st-link" :disabled="!isDesktop" @click="toggleMiniMode">
+            {{ miniOpen ? '关闭迷你窗' : '打开迷你窗' }}
+          </button>
+          <span class="st-hint">置顶小窗，只留封面、歌名和播放控制</span>
+        </div>
+        <div class="st-row">
+          <span class="st-label">桌面歌词</span>
+          <button type="button" class="st-link" :disabled="!isDesktop" @click="toggleDesktopLyrics">
+            {{ lyricsOpen ? '关闭桌面歌词' : '打开桌面歌词' }}
+          </button>
+          <span class="st-hint">透明浮层，字号 / 颜色 / 透明度 / 描边可调</span>
+        </div>
         <div class="st-row">
           <span class="st-label">监控音乐文件夹</span>
           <el-switch :model-value="form.monitorFolders" @change="saveDesktopToggle" />

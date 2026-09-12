@@ -47,6 +47,28 @@ html.dark {
   --el-mask-color: rgba(0, 0, 0, 0.55);
 }
 
+/* 浅色主题的同一套映射。之前只有 dark 有这一段——html.light 一个字都没有，
+   结果浅色下 EP 的 --el-color-primary 一直是默认蓝 #409eff：开关、单选钮、
+   下拉高亮、菜单激活色全是蓝的，用户切强调色毫无反应。
+   主色的梯度（light-3/5/7/8/9）不在这里写死，theme.js 按强调色现场算，
+   浅色往白混、深色往黑混，两套主题共用同一段逻辑。 */
+html.light {
+  --el-color-primary: var(--accent);
+  --el-bg-color: var(--bg-elev);
+  --el-bg-color-overlay: var(--bg-elev-2);
+  --el-bg-color-page: var(--bg);
+  --el-text-color-primary: var(--text);
+  --el-text-color-regular: var(--text);
+  --el-text-color-secondary: var(--text-dim);
+  --el-text-color-placeholder: var(--text-faint);
+  --el-border-color: var(--line);
+  --el-border-color-light: var(--line);
+  --el-border-color-lighter: var(--line);
+  --el-fill-color-blank: var(--bg);
+  --el-fill-color-light: var(--bg-elev-2);
+  --el-mask-color: rgba(0, 0, 0, 0.4);
+}
+
 * { box-sizing: border-box; }
 
 html {
@@ -132,10 +154,14 @@ button {
 .brand-mark { color: var(--accent); }
 .brand-sub { margin: 0; font-size: 12px; color: var(--text-faint); }
 
-/* 视图切换菜单：去掉 Element 默认的内边距与下划线 */
+/* 视图切换菜单：去掉 Element 默认的内边距与下划线。
+   背景必须透明：el-menu 默认取 --el-menu-bg-color（= --el-fill-color-blank），
+   深色是 #121212、浅色是 #ffffff，而侧栏是 --bg-elev（#181818 / #f7f7f7），
+   两个主题下菜单都比侧栏差一档，看起来像浮着一块补丁，切主题也对不上 */
 .sidebar .el-menu {
   border-right: 0;
   padding: 0 2px;
+  background: transparent;
 }
 .sidebar .el-menu-item {
   height: 44px;
@@ -1946,16 +1972,13 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
     --el-component-size: 40px;
   }
   /* el-menu 默认是 display:block，只写 flex-direction 是无效的，必须显式给 display:flex
-     否则手机端「搜索结果 / 我的收藏」会上下堆叠，白占顶部一整行。
-     background 也要清掉：el-menu 自带 --el-menu-bg-color(#121212)，和顶栏的
-     #181818 差一档，四个图标会被包在一块可见的深色矩形里 */
+     否则手机端「搜索结果 / 我的收藏」会上下堆叠，白占顶部一整行 */
   .sidebar .el-menu {
     display: flex;
     width: auto;
     flex: none;
     flex-direction: row;
     border-bottom: 0;
-    background: transparent;
     padding: 0;
   }
   /* 菜单项图标化：文字收起来，语义靠 aria-label，数字变成右上角角标。

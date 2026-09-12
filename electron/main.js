@@ -223,13 +223,20 @@ function rebuildTrayMenu() {
 function buildTray() {
   // 托盘图标：用多尺寸 ICO 缩到 32×32。Windows 托盘偏爱 16/32px，
   // 直接用 512 原图会被系统压成马赛克。
+  //
+  // 候选路径必须覆盖两种跑法：
+  //   打包后  process.resourcesPath/build   ← extraResources 放的
+  //   开发    electron/main.js 直接跑，app.getAppPath() 返回的是 electron/
+  //          目录而不是仓库根，得从 main.js 自己的位置往上找一级。
+  //          之前只算到 electron/build，四个候选全落空 → 托盘建不起来
+  //          → 迷你模式和桌面歌词的入口跟着消失。
   const packaged = resolve(process.resourcesPath ?? '', 'build');
-  const dev = resolve(app.getAppPath(), 'build');
+  const devRoot = resolve(HERE, '..', 'build');
   const image = loadTrayImage([
     resolve(packaged, 'icon.ico'),
     resolve(packaged, 'icon.png'),
-    resolve(dev, 'icon.ico'),
-    resolve(dev, 'icon.png'),
+    resolve(devRoot, 'icon.ico'),
+    resolve(devRoot, 'icon.png'),
   ]);
   // 图标加载失败就不建托盘：图标空着只会多出一个看不见的占位，
   // 而且 window-all-closed 里的 !tray 判断会让应用退不掉。
@@ -480,6 +487,25 @@ function registerIpc() {
       case 'open-external':
         if (typeof arg === 'string' && /^https?:/i.test(arg)) void shell.openExternal(arg);
         return null;
+      // 迷你模式 / 桌面歌词的应用内入口（F21）。之前只有托盘菜单能开，
+      // 浏览器里没有托盘，这两个功能对不翻托盘的人来说等于不存在
+      case 'open-mini':
+        void openMini();
+        return null;
+      case 'open-lyrics':
+        void openLyrics();
+        return null;
+      case 'close-mini':
+        miniWin?.close();
+        return null;
+      case 'close-lyrics':
+        lyricsWin?.close();
+        return null;
+      case 'aux-state':
+        return {
+          mini: Boolean(miniWin && !miniWin.isDestroyed()),
+          lyrics: Boolean(lyricsWin && !lyricsWin.isDestroyed()),
+        };
       default:
         return null;
     }

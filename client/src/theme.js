@@ -114,6 +114,9 @@ function applyTheme(theme = state.theme) {
   root.classList.add(resolved)
   const map = resolved === 'light' ? LIGHT : DARK
   for (const [k, v] of Object.entries(map)) root.style.setProperty(k, v)
+  // EP 主色梯度要按新主题的方向重算：浅色往白混、深色往黑混。
+  // 不重算的话「浅色里选绿 → 切深色」，light-9 还是一片近白，hover/禁用态会发白
+  applyElementPlusPrimary(state.accent)
   // 主题变了地址栏底色要跟着变，否则浅色主题下浏览器顶栏还是强调色
   syncThemeColor()
 }
@@ -128,7 +131,47 @@ function applyAccent(color = state.accent) {
   const glow = withAlpha(hex, 0.42) || 'rgba(236, 65, 65, 0.42)'
   root.style.setProperty('--accent-soft', soft)
   root.style.setProperty('--accent-glow', glow)
+  applyElementPlusPrimary(hex)
   syncThemeColor()
+}
+
+/**
+ * Element Plus 的一整套主色变量跟着强调色走。
+ *
+ * 之前只在 base.css 的 html.dark 里映射了 --el-color-primary，浅色主题下
+ * 它一直是 EP 的默认蓝 #409eff——开关、单选钮、下拉高亮、菜单激活色全是蓝的，
+ * 用户切强调色毫无反应。而且 EP 的 light-5/7/8/9 这些梯度是按默认蓝写死的，
+ * 只覆盖主色会让 hover / 禁用态还是蓝底，所以整套梯度都按强调色现场算。
+ *
+ * 方向跟 EP 的 SCSS 一致：浅色主题往白混（light-N 越来越亮），
+ * 深色主题往黑混（EP 的暗色板就是这么翻转的），dark-2 则相反。
+ * 深浅主题切换时 applyTheme 会再调一次，方向不会停留在上一个主题。
+ */
+function applyElementPlusPrimary(hex) {
+  const root = document.documentElement
+  const dark = root.classList.contains('dark')
+  const mix = (ratio, toWhite) => {
+    const h = hex.replace('#', '')
+    const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+    const num = parseInt(full, 16)
+    const r0 = (num >> 16) & 255
+    const g0 = (num >> 8) & 255
+    const b0 = num & 255
+    const target = toWhite ? 255 : 0
+    const ch = (v) => Math.round(v + (target - v) * ratio)
+    return `#${((ch(r0) << 16) | (ch(g0) << 8) | ch(b0)).toString(16).padStart(6, '0')}`
+  }
+  const to = dark ? false : true // 梯度方向：浅色往白，深色往黑
+  const pairs = {
+    '--el-color-primary': hex,
+    '--el-color-primary-light-3': mix(0.3, to),
+    '--el-color-primary-light-5': mix(0.5, to),
+    '--el-color-primary-light-7': mix(0.7, to),
+    '--el-color-primary-light-8': mix(0.8, to),
+    '--el-color-primary-light-9': mix(0.9, to),
+    '--el-color-primary-dark-2': mix(0.2, !to),
+  }
+  for (const [k, v] of Object.entries(pairs)) root.style.setProperty(k, v)
 }
 
 /** 切换主题（light / dark / system） */
