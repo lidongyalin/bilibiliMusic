@@ -135,8 +135,22 @@ export default defineComponent({
     class="dl"
     :class="{ 'is-locked': style.lock, 'is-empty': !current }"
   >
+    <!-- 关闭按钮：右上角常显，不跟悬停走。窗口无边框也不进任务栏，
+         藏进悬停行里用户只能去托盘翻「关闭桌面歌词」，很多人找不到出口 -->
+    <button
+      type="button"
+      class="dl-close"
+      title="关闭桌面歌词"
+      aria-label="关闭桌面歌词"
+      @click.stop="closeLyrics"
+    >
+      <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+        <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
+      </svg>
+    </button>
+
     <!-- 歌名行：悬停出现（锁定时常显，否则没有解锁入口）。
-         点歌名回主窗；锁定和关闭在右侧。整窗其余部分按住即拖动 -->
+         点歌名回主窗；锁定在右侧。整窗其余部分按住即拖动 -->
     <div class="dl-head">
       <button
         type="button"
@@ -166,18 +180,6 @@ export default defineComponent({
             fill="currentColor"
             d="M5 7V5a3 3 0 015.6-1.4l1.1-1.1A4.5 4.5 0 004 5v2H3a1 1 0 00-1 1v5a1 1 0 001 1h9a1 1 0 001-1V8a1 1 0 00-1-1z"
           />
-        </svg>
-      </button>
-
-      <button
-        type="button"
-        class="dl-iconbtn"
-        title="关闭桌面歌词"
-        aria-label="关闭桌面歌词"
-        @click.stop="closeLyrics"
-      >
-        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
-          <path fill="currentColor" d="M2.3 1 6 4.7 9.7 1 11 2.3 7.3 6l3.7 3.7-1.3 1.3L6 7.3 2.3 11 1 9.7 4.7 6 1 2.3z" />
         </svg>
       </button>
     </div>

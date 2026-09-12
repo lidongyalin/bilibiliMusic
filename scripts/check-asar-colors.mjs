@@ -113,11 +113,12 @@ const checks = [
 
   // ---- 本地播放器新增能力：样式层 ----
   ['CSS 含迷你窗独立窗口样式 .mini-mode', cssText.includes('.mini-mode')],
-  ['CSS 含桌面歌词窗样式 .dl-bar', cssText.includes('.dl-bar')],
-  // 源文件写的是 rgba(18,18,18,0.82)，esbuild 会折成 8 位十六进制 #121212d1
-  // （0.82 × 255 ≈ 209 = 0xD1），所以两种形态都得认
-  ['CSS 桌面歌词控制条半透明底',
-    /rgba\(18,\s*18,\s*18,\s*(?:0\.)?82\)/.test(cssText) || cssText.includes('#121212d1')],
+  // 桌面歌词重设计后控制条换成「悬停整窗黑色半透明面板」：
+  // .dl:hover 面板 + 歌名行 .dl-head + 调节行 .dl-controls。
+  // 面板色 rgba(8,8,10,.66)，压缩器可能折成 #08080aa8，两种形态都认
+  ['CSS 含桌面歌词窗样式 .dl-head', cssText.includes('.dl-head')],
+  ['CSS 桌面歌词悬停整窗半透明黑面板',
+    cssText.includes('.dl:hover') && /rgba\(8,\s*8,\s*10|08080a/i.test(cssText)],
   ['CSS 歌词校准控件 .lp-cal', cssText.includes('.lp-cal')],
   ['CSS 拖拽区 webkit-app-region: drag', /webkit-app-region:\s*drag/.test(cssText)],
   ['CSS 控件区 webkit-app-region: no-drag', /webkit-app-region:\s*no-drag/.test(cssText)],

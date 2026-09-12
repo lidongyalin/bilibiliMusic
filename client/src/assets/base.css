@@ -208,13 +208,21 @@ html.has-titlebar .lyric-panel { top: var(--titlebar-h); }
 }
 .sidebar .el-menu-item.is-active .el-icon { color: var(--accent); }
 .fav-count {
+  flex: none;
   margin-left: auto;
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
   border-radius: 999px;
   background: var(--bg-elev-2);
   color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+  /* 必须自己定行高：不写就会继承 .el-menu-item 的 line-height:44px，
+     角标量出来是 20×46，border-radius:999px 直接把它变成竖着的胶囊 */
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .el-menu-item.is-active .fav-count { background: var(--accent); color: #fff; }
 
@@ -2558,6 +2566,7 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
    当前歌词行的颜色 / 透明度 / 描边仍由用户设置控制。
    整窗都是拖拽区（按住拖位置），只有按钮和滑杆 no-drag。 */
 .dl {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -2574,8 +2583,29 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
 }
 
-/* 歌名行：歌名（点回主窗）+ 锁定 + 关闭。悬停出现；锁定时常显，
-   否则锁了就没有解锁入口 */
+/* 关闭按钮：右上角常显，不进悬停门。窗口透明无边框，× 浮在桌面上，
+   用深色投影压住对比——图标是 SVG path，text-shadow 对它无效，得用 drop-shadow。
+   整窗是拖拽区，按钮必须 no-drag */
+.dl-close {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  z-index: 3;
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.55);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.85));
+  transition: color 0.15s, background-color 0.15s;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.dl-close:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+
+/* 歌名行：歌名（点回主窗）+ 锁定。悬停出现；锁定时常显，
+   否则锁了就没有解锁入口。关闭按钮单独钉在右上角，不在这行里 */
 .dl-head {
   flex: none;
   display: flex;
@@ -2583,6 +2613,8 @@ button.lp-cal-val.is-set:hover { text-decoration: underline; }
   gap: 4px;
   height: 24px;
   margin-bottom: 2px;
+  /* 右上角让出关闭按钮的位置，否则锁定和 × 会叠在一起 */
+  padding-right: 28px;
   opacity: 0;
   /* 隐藏时必须连点击一起关掉：不然想从窗顶拖动窗口，
      会点中隐形的「打开主窗口」按钮 */
